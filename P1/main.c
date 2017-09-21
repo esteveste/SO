@@ -25,7 +25,7 @@ DoubleMatrix2D *simul(DoubleMatrix2D *matrix, DoubleMatrix2D *matrix_aux, int li
 
     for (int i = 1; i < linhas-1; ++i)
       for (int j = 1; j < colunas-1; ++j)
-        matrix_aux->data[i*colunas+j] = (matrix->data[(i-1)*colunas +j]+matrix->data[(i+1)*colunas + j]+matrix->data[i*colunas + j-1]+matrix->data[i*colunas + j+1])/4;
+        dm2dSetEntry(matrix_aux,i,j,(dm2dGetEntry(matrix,i-1,j) + dm2dGetEntry(matrix,i+1,j) + dm2dGetEntry(matrix,i,j-1) + dm2dGetEntry(matrix,i,j+1))/4);
     
     temp = matrix;
     matrix = matrix_aux;
@@ -87,7 +87,7 @@ int main (int argc, char** argv) {
   int iteracoes = parse_integer_or_exit(argv[6], "iteracoes");
 
   if(N<1 || tEsq < 0 || tSup < 0 || tDir < 0|| tInf < 0 || iteracoes < 1){
-    fprintf(stderr,"Argumentos invalido\n");
+    fprintf(stderr,"Contexto dos argumentos invalido\n");
     return 1;
   }
 
