@@ -1,0 +1,13 @@
+
+
+heatSim: matrix2d.o main.o
+	gcc -o heatSim matrix2d.o main.o
+
+matrix2d.o: matrix2d.c matrix2d.h
+	gcc -g -c matrix2d.c
+
+main.o: main.c matrix2d.h
+	gcc -g -c main.c
+
+clean:
+	rm -f *.o heatSim
