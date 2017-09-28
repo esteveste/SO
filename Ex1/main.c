@@ -89,7 +89,7 @@ int main (int argc, char** argv) {
   int trab = parse_integer_or_exit(argv[7], "trab");
   int csz = parse_integer_or_exit(argv[8], "csz");
 
-  if(N<1 || tEsq < 0 || tSup < 0 || tDir < 0|| tInf < 0 || iteracoes < 1){
+  if(N<1 || tEsq < 0 || tSup < 0 || tDir < 0|| tInf < 0 || iteracoes < 1 || trab < 0 || csz <0){
     fprintf(stderr,"Contexto dos argumentos invalido\n");
     return 1;
   }
