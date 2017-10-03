@@ -46,7 +46,7 @@
 |
 ---------------------------------------------------------------------*/
 
-
+// Message Passing Lib
 int inicializarMPlib(int capacidade_de_cada_canal, int ntasks);
 void libertarMPlib();
 
