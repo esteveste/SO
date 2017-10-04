@@ -32,12 +32,9 @@ typedef struct {
 DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numIteracoes, int tSup, int tInf, int tEsq, int tDir,int trab)
 {
   //initializacao
-  printf("Init\n");
   DoubleMatrix2D *matrix, *matrix_aux, *temp;
   matrix = dm2dNew(n_linhas + 2, N+2);
   matrix_aux = dm2dNew(n_linhas + 2,N+2);
-
-
 
   if(id ==0){
     dm2dSetLineTo (matrix, 0, tSup);
@@ -95,9 +92,9 @@ DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numItera
     }
 
   }
-  printf("retunr\n");
-  //fazer free
-
+  //fazer free da fatias aux e do buffer
+  dm2dFree(matrix_aux);
+  free(buffer);
 
     return matrix;
 }
@@ -110,7 +107,6 @@ void *fnThread(void *arg) {
   Info *x;
   DoubleMatrix2D *r;
   x = (Info*)arg;
-  //result
   //can the output be a pointer?
   // r = (double*)malloc(sizeof(int));
 
@@ -228,14 +224,10 @@ int main (int argc, char** argv) {
 
 
   matrix = dm2dNew(N+2, N+2);
-  // matrix_aux = dm2dNew(N+2, N+2);
 
   dm2dSetLineTo (matrix, 0, tSup);
   dm2dSetLineTo (matrix, N+1, tInf);
-  // dm2dSetColumnTo (matrix, 0, tEsq);
-  // dm2dSetColumnTo (matrix, N+1, tDir);
 
-  // dm2dCopy (matrix_aux, matrix);
   //Fim initializar Matrizes
 
 
@@ -247,9 +239,6 @@ int main (int argc, char** argv) {
 
   //definir INFO
 
-  // for(;i<trab;i++){
-
-  // }
   int n_linhas = N / trab;
   int i = 0;
   for (; i<trab; i++) {
@@ -274,13 +263,6 @@ int main (int argc, char** argv) {
     printf("Lancou uma tarefa nr: %d\n",i);
   }
 
-  // // initialize threads
-  // for (i=0; i<trab; i++) {
-
-  //   init_simul_thread(i,N,n_linhas,tid,trab,matrix);
-
-  // }
-
   //wait for finish thread
   for (i=0; i<trab; i++) {
     if (pthread_join (tid[i], (void**)&result) != 0) {
@@ -289,21 +271,20 @@ int main (int argc, char** argv) {
     }
 
     //put lines in matrix
-    // for (int j = 0; j < n_linhas; j++)
-    // {
-    //   dm2dSetLine(matrix, i*n_linhas + j + 1, dm2dGetLine(result, j+1));
-    // }
-    // printf("Tarefa retornou com resultado = %f\n", result->data[0]);
-    dm2dPrint(result);
+    int j = 0;
+    for (; j < n_linhas; j++)
+      dm2dSetLine(matrix, i*n_linhas + j + 1, dm2dGetLine(result, j+1));
+    //free of each result from matrix
+    dm2dFree(result);
   }
 
-  // result = simul(matrix, matrix_aux, N+2, N+2, iteracoes);
+  //fazer print do result
+  dm2dPrint(matrix);
 
-  // dm2dPrint(matrix);
-
-  // dm2dFree(matrix);
-  // dm2dFree(matrix_aux);
-  // //terminar as tarefas
+  //free of vars
+  free(args);
+  dm2dFree(matrix);
+  // terminar as tarefas
   libertarMPlib();
 
   return 0;
