@@ -12,6 +12,10 @@
 #include "matrix2d.h"
 #include "mplib3.h"
 
+//constants
+#define MAIN_ID -1
+
+
 //Heap vars
 
 typedef struct {
@@ -63,11 +67,11 @@ void *fnThread(void *arg) {
 void init_simul_thread(int i,int n_linhas,pthread_t* tid,int n_tarefas){
   //n fazer antes
   if(i !=0){
-    enviarMensagem(-1, tid[i-1], void *msg, int tamanho);
+    enviarMensagem(MAIN_ID, tid[i-1], void *msg, int tamanho);
   }
   //nem depois da tarefa
   if(i != n_tarefas -1){
-    enviarMensagem(-1, tid[i+1], void *msg, int tamanho);
+    enviarMensagem(MAIN_ID, tid[i+1], void *msg, int tamanho);
   }
 }
 
