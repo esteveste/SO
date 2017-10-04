@@ -14,8 +14,8 @@ matrix2d.o: matrix2d.c matrix2d.h
 	$(CC) $(CFLAGS) -c matrix2d.c
 	
 # threading part
-mplib3.o: mplib3.c mplib3.h leQueue.o
-	$(CC) $(CFLAGS) -c -pthread mplib3.c 
+mplib3.o: mplib3.c mplib3.h
+	$(CC) $(CFLAGS) -c mplib3.c 
 leQueue.o: leQueue.c leQueue.h
 	$(CC) $(CFLAGS) -c leQueue.c
 clean:

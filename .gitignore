@@ -88,3 +88,7 @@ dkms.conf
 *.exe
 *.out
 *.app
+
+__MACOSX/
+
+message-passing-exemplo\.zip
