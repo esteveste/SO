@@ -32,19 +32,24 @@ typedef struct {
 DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numIteracoes, int tSup, int tInf, int tEsq, int tDir,int trab)
 {
   //initializacao
+  printf("Init\n");
   DoubleMatrix2D *matrix, *matrix_aux, *temp;
-  matrix = dm2dNew(N+2, n_linhas + 2);
-  matrix_aux = dm2dNew(N+2, n_linhas + 2);
+  matrix = dm2dNew(n_linhas + 2, N+2);
+  matrix_aux = dm2dNew(n_linhas + 2,N+2);
 
-  dm2dSetColumnTo (matrix, 0, tEsq);
-  dm2dSetColumnTo (matrix, N+1, tDir);
   if(id ==0){
     dm2dSetLineTo (matrix, 0, tSup);
     
   }
   if(id == trab - 1){
-    dm2dSetLineTo (matrix, N+1, tInf);
+    dm2dSetLineTo (matrix, n_linhas+1, tInf);
   }
+
+  dm2dSetColumnTo (matrix, 0, tEsq);
+  dm2dSetColumnTo (matrix, N+1, tDir);
+
+
+  printf("Init finished\n");
 
   ////////////////////////////////////////
   //processar
@@ -56,13 +61,13 @@ DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numItera
   {
     if(n!=0){
       if(id !=0){
-        receberMensagem(id -1, id, buffer,sizeof(double) * colunas);
-        dm2dSetLine(matrix,0,*buffer);
+        // receberMensagem(id -1, id, buffer,sizeof(double) * colunas);
+        // dm2dSetLine(matrix,0,*buffer);
       }
       if (id != trab -1)
       {
-        receberMensagem(id +1, id, buffer,sizeof(double) * colunas);
-        dm2dSetLine(matrix,linhas - 1,*buffer);
+        // receberMensagem(id +1, id, buffer,sizeof(double) * colunas);
+        // dm2dSetLine(matrix,linhas - 1,*buffer);
       }
 
     }
@@ -71,7 +76,7 @@ DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numItera
       for (int j = 1; j < colunas-1; ++j)
         dm2dSetEntry(matrix_aux,i,j,(dm2dGetEntry(matrix,i-1,j) + dm2dGetEntry(matrix,i+1,j) + dm2dGetEntry(matrix,i,j-1) + dm2dGetEntry(matrix,i,j+1))/4);
     
-
+      printf("calc finished\n");
     if(id !=0){
       enviarMensagem(id, id -1, dm2dGetLine(matrix, 0), sizeof(double) * colunas);
     }
@@ -85,6 +90,7 @@ DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numItera
     matrix_aux = temp;
 
   }
+  printf("retunr\n");
     return matrix;
 }
 /*--------------------------------------------------------------------
@@ -100,8 +106,9 @@ void *fnThread(void *arg) {
   //can the output be a pointer?
   // r = (double*)malloc(sizeof(int));
 
-
+  printf("going to send\n");
   r = simul_thread(x->id,x->n_linhas,x->N,x->iter,x->numIteracoes,x->tSup,x->tInf,x->tEsq,x->tDir,x->trab);
+  printf("going to return\n");
   return r;
 }
 // /*--------------------------------------------------------------------
@@ -206,7 +213,7 @@ int main (int argc, char** argv) {
   }
 
 
-  DoubleMatrix2D *matrix, *matrix_aux, *result;
+  DoubleMatrix2D *result;
 
 
   fprintf(stderr, "\nArgumentos:\n"
@@ -214,15 +221,15 @@ int main (int argc, char** argv) {
 	N, tEsq, tSup, tDir, tInf, iteracoes,trab,csz);
 
 
-  matrix = dm2dNew(N+2, N+2);
-  matrix_aux = dm2dNew(N+2, N+2);
+  // matrix = dm2dNew(N+2, N+2);
+  // matrix_aux = dm2dNew(N+2, N+2);
 
-  dm2dSetLineTo (matrix, 0, tSup);
-  dm2dSetLineTo (matrix, N+1, tInf);
-  dm2dSetColumnTo (matrix, 0, tEsq);
-  dm2dSetColumnTo (matrix, N+1, tDir);
+  // dm2dSetLineTo (matrix, 0, tSup);
+  // dm2dSetLineTo (matrix, N+1, tInf);
+  // dm2dSetColumnTo (matrix, 0, tEsq);
+  // dm2dSetColumnTo (matrix, N+1, tDir);
 
-  dm2dCopy (matrix_aux, matrix);
+  // dm2dCopy (matrix_aux, matrix);
   //Fim initializar Matrizes
 
 
@@ -269,12 +276,13 @@ int main (int argc, char** argv) {
   // }
 
   //wait for finish thread
-  for (i=0; i<N; i++) {
+  for (i=0; i<trab; i++) {
     if (pthread_join (tid[i], (void**)&result) != 0) {
       printf("Erro ao esperar por tarefa.\n");
       return 2;
     }
     printf("Tarefa retornou com resultado = %f\n", result->data[0]);
+    dm2dPrint(result);
   }
 
   // result = simul(matrix, matrix_aux, N+2, N+2, iteracoes);

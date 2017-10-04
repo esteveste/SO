@@ -25,4 +25,4 @@ zip:
 	zip heatSim_ex01_solucao.zip main.c matrix2d.c matrix2d.h Makefile
 
 run:
-	./heatSim 5 10.0 10.0 0.0 0.0 10 1 1
+	./heatSim 10 10.0 10.0 0.0 0.0 10 1 1
