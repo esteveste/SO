@@ -14,7 +14,7 @@
 
 //Heap vars
 
-typedef struct {//N?
+typedef struct {
   int id, n_linhas, N, iter, numIteracoes;
 }Info;
 
@@ -23,7 +23,7 @@ typedef struct {//N?
 | Function: simul_thread 
 ---------------------------------------------------------------------*/
 
-void *simul_thread(void *arg) {
+double *simul_thread(int id, int n_linhas, int N, int iter, int numIteracoes) {
   DoubleMatrix2D *temp;
 
   // for (int n = 0; n < numIteracoes; ++n)
@@ -40,18 +40,34 @@ void *simul_thread(void *arg) {
   // }
     // return matrix;
 }
+/*--------------------------------------------------------------------
+| Function: fnThread
+| Descricao: funcao aux que cumpre certa Interface entre
+| o simul_thread e a funcao pthread_create
+---------------------------------------------------------------------*/
+void *fnThread(void *arg) {
+  Info *x;
+  double *r;
+  x = (Info*)arg;
+  //result
+  //NOTE FAZER ISTO DO SIZEOF
+  // r = (double*)malloc(sizeof(int));
 
+
+  r = simul_thread(x->id,x->n_linhas,x->N,x->iter,x->numIteracoes);
+  return r;
+}
 /*--------------------------------------------------------------------
 | Function Aux: init_simul_thread, Inicializa os threads da simul
 ---------------------------------------------------------------------*/
 void init_simul_thread(int i,int n_linhas,pthread_t* tid,int n_tarefas){
   //n fazer antes
   if(i !=0){
-    enviarMensagem(tid[i], tid[i-1], void *msg, int tamanho);
+    enviarMensagem(-1, tid[i-1], void *msg, int tamanho);
   }
   //nem depois da tarefa
   if(i != n_tarefas -1){
-    enviarMensagem(tid[i], tid[i+1], void *msg, int tamanho);
+    enviarMensagem(-1, tid[i+1], void *msg, int tamanho);
   }
 }
 
@@ -167,12 +183,12 @@ int main (int argc, char** argv) {
   Info* args = (Info *) malloc(sizeof(Info)*trab);
 
   //definir INFO
-  int i = 0;
+
   // for(;i<trab;i++){
 
   // }
   int n_linhas = N / trab;
-  i = 0;
+  int i = 0;
   for (; i<trab; i++) {
     //init args
     args[i].id = i;
@@ -182,7 +198,7 @@ int main (int argc, char** argv) {
     args[i].numIteracoes = iteracoes;
 
 
-    if (pthread_create (&tid[i], NULL, simul_thread, &args[i]) != 0){
+    if (pthread_create (&tid[i], NULL, fnThread, &args[i]) != 0){
       printf("Erro ao criar tarefa.\n");
       return 1;
     }
