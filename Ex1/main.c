@@ -4,6 +4,7 @@
 //Grupo 16
 */
 
+//Fazer error Handle
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -19,7 +20,8 @@
 //Heap vars
 
 typedef struct {
-  int id, n_linhas, N, iter, numIteracoes;
+  int id, n_linhas, N, iter, numIteracoes,trab;
+  int tEsq, tSup, tDir, tInf;
 }Info;
 
 
@@ -27,22 +29,63 @@ typedef struct {
 | Function: simul_thread 
 ---------------------------------------------------------------------*/
 
-double *simul_thread(int id, int n_linhas, int N, int iter, int numIteracoes) {
-  DoubleMatrix2D *temp;
+DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numIteracoes, int tSup, int tInf, int tEsq, int tDir,int trab)
+{
+  //initializacao
+  DoubleMatrix2D *matrix, *matrix_aux, *temp;
+  matrix = dm2dNew(N+2, n_linhas + 2);
+  matrix_aux = dm2dNew(N+2, n_linhas + 2);
 
-  // for (int n = 0; n < numIteracoes; ++n)
-  // {
-
-  //   for (int i = 1; i < linhas-1; ++i)
-  //     for (int j = 1; j < colunas-1; ++j)
-  //       dm2dSetEntry(matrix_aux,i,j,(dm2dGetEntry(matrix,i-1,j) + dm2dGetEntry(matrix,i+1,j) + dm2dGetEntry(matrix,i,j-1) + dm2dGetEntry(matrix,i,j+1))/4);
+  dm2dSetColumnTo (matrix, 0, tEsq);
+  dm2dSetColumnTo (matrix, N+1, tDir);
+  if(id ==0){
+    dm2dSetLineTo (matrix, 0, tSup);
     
-  //   temp = matrix;
-  //   matrix = matrix_aux;
-  //   matrix_aux = temp;
+  }
+  if(id == trab - 1){
+    dm2dSetLineTo (matrix, N+1, tInf);
+  }
 
-  // }
-    // return matrix;
+  ////////////////////////////////////////
+  //processar
+  int colunas = N+2;
+  int linhas = n_linhas + 2;
+  double **buffer;
+  buffer = (double **) malloc(sizeof(double) * colunas);
+  for (int n = 0; n < numIteracoes; ++n)
+  {
+    if(n!=0){
+      if(id !=0){
+        receberMensagem(id -1, id, buffer,sizeof(double) * colunas);
+        dm2dSetLine(matrix,0,*buffer);
+      }
+      if (id != trab -1)
+      {
+        receberMensagem(id +1, id, buffer,sizeof(double) * colunas);
+        dm2dSetLine(matrix,linhas - 1,*buffer);
+      }
+
+    }
+
+    for (int i = 1; i < linhas-1; ++i)
+      for (int j = 1; j < colunas-1; ++j)
+        dm2dSetEntry(matrix_aux,i,j,(dm2dGetEntry(matrix,i-1,j) + dm2dGetEntry(matrix,i+1,j) + dm2dGetEntry(matrix,i,j-1) + dm2dGetEntry(matrix,i,j+1))/4);
+    
+
+    if(id !=0){
+      enviarMensagem(id, id -1, dm2dGetLine(matrix, 0), sizeof(double) * colunas);
+    }
+    if(id != trab -1){
+      enviarMensagem(id, id +1, dm2dGetLine(matrix, linhas - 1), sizeof(double) * colunas);
+    }
+        
+
+    temp = matrix;
+    matrix = matrix_aux;
+    matrix_aux = temp;
+
+  }
+    return matrix;
 }
 /*--------------------------------------------------------------------
 | Function: fnThread
@@ -51,29 +94,36 @@ double *simul_thread(int id, int n_linhas, int N, int iter, int numIteracoes) {
 ---------------------------------------------------------------------*/
 void *fnThread(void *arg) {
   Info *x;
-  double *r;
+  DoubleMatrix2D *r;
   x = (Info*)arg;
   //result
-  //NOTE FAZER ISTO DO SIZEOF
+  //can the output be a pointer?
   // r = (double*)malloc(sizeof(int));
 
 
-  r = simul_thread(x->id,x->n_linhas,x->N,x->iter,x->numIteracoes);
+  r = simul_thread(x->id,x->n_linhas,x->N,x->iter,x->numIteracoes,x->tSup,x->tInf,x->tEsq,x->tDir,x->trab);
   return r;
 }
-/*--------------------------------------------------------------------
-| Function Aux: init_simul_thread, Inicializa os threads da simul
----------------------------------------------------------------------*/
-void init_simul_thread(int i,int n_linhas,pthread_t* tid,int n_tarefas){
-  //n fazer antes
-  if(i !=0){
-    enviarMensagem(MAIN_ID, tid[i-1], void *msg, int tamanho);
-  }
-  //nem depois da tarefa
-  if(i != n_tarefas -1){
-    enviarMensagem(MAIN_ID, tid[i+1], void *msg, int tamanho);
-  }
-}
+// /*--------------------------------------------------------------------
+// | Function Aux: init_simul_thread, Inicializa os threads da simul
+// ---------------------------------------------------------------------*/
+// void init_simul_thread(int id,int N,int n_linhas,pthread_t* tid,int n_tarefas,DoubleMatrix2D *matrix){
+
+//   for (int i = id * n_linhas; i < n_linhas; i++)
+//   {
+    
+//   }
+
+
+
+//   if(id !=0){
+//     enviarMensagem(MAIN_ID, tid[id-1], dm2dGetLine(matrix, int line_nb), sizeof(double) * N);
+//   }
+//   //nem depois da tarefa
+//   if(id != n_tarefas -1){
+//     enviarMensagem(MAIN_ID, tid[id+1], dm2dGetLine(matrix, int line_nb), sizeof(double) * N);
+//   }
+// }
 
 /*--------------------------------------------------------------------
 | Function: simul (iterative)
@@ -150,7 +200,7 @@ int main (int argc, char** argv) {
   int trab = parse_integer_or_exit(argv[7], "trab"); //nr tarefas
   int csz = parse_integer_or_exit(argv[8], "csz"); //nr mensagens por canal
 
-  if(N<1 || tEsq < 0 || tSup < 0 || tDir < 0|| tInf < 0 || iteracoes < 1 || trab < 0 || csz < 0 || N % trab == 0){
+  if(N<1 || tEsq < 0 || tSup < 0 || tDir < 0|| tInf < 0 || iteracoes < 1 || trab < 0 || csz < 0 || N % trab != 0){
     fprintf(stderr,"Contexto dos argumentos invalido\n");
     return 1;
   }
@@ -175,12 +225,8 @@ int main (int argc, char** argv) {
   dm2dCopy (matrix_aux, matrix);
   //Fim initializar Matrizes
 
+
   inicializarMPlib(csz,trab);
-
-
-
-
-
 
   //threading
   pthread_t tid[trab];
@@ -197,9 +243,14 @@ int main (int argc, char** argv) {
     //init args
     args[i].id = i;
     args[i].N = N;
+    args[i].trab = trab;
     args[i].n_linhas = n_linhas;
     args[i].iter = 0;
     args[i].numIteracoes = iteracoes;
+    args[i].tDir = tDir;
+    args[i].tEsq = tEsq;
+    args[i].tSup = tSup;
+    args[i].tInf = tInf;
 
 
     if (pthread_create (&tid[i], NULL, fnThread, &args[i]) != 0){
@@ -210,12 +261,12 @@ int main (int argc, char** argv) {
     printf("Lancou uma tarefa nr: %d\n",i);
   }
 
-  // initialize threads
-  for (i=0; i<trab; i++) {
+  // // initialize threads
+  // for (i=0; i<trab; i++) {
 
-    init_simul_thread(i,n_linhas,tid,trab);
+  //   init_simul_thread(i,N,n_linhas,tid,trab,matrix);
 
-  }
+  // }
 
   //wait for finish thread
   for (i=0; i<N; i++) {
@@ -223,16 +274,16 @@ int main (int argc, char** argv) {
       printf("Erro ao esperar por tarefa.\n");
       return 2;
     }
-    printf("Tarefa retornou com resultado = %d\n", *result);
+    printf("Tarefa retornou com resultado = %f\n", result->data[0]);
   }
 
-  result = simul(matrix, matrix_aux, N+2, N+2, iteracoes);
+  // result = simul(matrix, matrix_aux, N+2, N+2, iteracoes);
 
-  dm2dPrint(result);
+  // dm2dPrint(result);
 
-  dm2dFree(matrix);
-  dm2dFree(matrix_aux);
-  //terminar as tarefas
+  // dm2dFree(matrix);
+  // dm2dFree(matrix_aux);
+  // //terminar as tarefas
   libertarMPlib();
 
   return 0;

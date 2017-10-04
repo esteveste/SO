@@ -5,9 +5,9 @@ CFLAGS= -g -Wall -pedantic
 CC=gcc
 
 heatSim: main.o matrix2d.o mplib3.o
-	$(CC) $(CFLAGS) -o heatSim main.o matrix2d.o
+	$(CC) $(CFLAGS) -pthread -o heatSim main.o matrix2d.o mplib3.o leQueue.o
 
-main.o: main.c matrix2d.h
+main.o: main.c matrix2d.h mplib3.h
 	$(CC) $(CFLAGS) -c -pthread main.c
 
 matrix2d.o: matrix2d.c matrix2d.h
