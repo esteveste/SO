@@ -55,19 +55,20 @@ DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numItera
   //processar
   int colunas = N+2;
   int linhas = n_linhas + 2;
-  double **buffer;
-  buffer = (double **) malloc(sizeof(double) * colunas);
+  double *buffer;
+  buffer = (double *) malloc(sizeof(double) * colunas);
   for (int n = 0; n < numIteracoes; ++n)
   {
     if(n!=0){
       if(id !=0){
-        // receberMensagem(id -1, id, buffer,sizeof(double) * colunas);
-        // dm2dSetLine(matrix,0,*buffer);
+        receberMensagem(id -1, id, buffer,sizeof(double) * colunas);
+        printf("double 1:%f",buffer[2]);
+        dm2dSetLine(matrix,0,buffer);
       }
       if (id != trab -1)
       {
-        // receberMensagem(id +1, id, buffer,sizeof(double) * colunas);
-        // dm2dSetLine(matrix,linhas - 1,*buffer);
+        receberMensagem(id +1, id, buffer,sizeof(double) * colunas);
+        dm2dSetLine(matrix,linhas - 1,buffer);
       }
 
     }
@@ -78,10 +79,10 @@ DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numItera
     
       printf("calc finished\n");
     if(id !=0){
-      enviarMensagem(id, id -1, dm2dGetLine(matrix, 0), sizeof(double) * colunas);
+      enviarMensagem(id, id -1, dm2dGetLine(matrix, 1), sizeof(double) * colunas);
     }
     if(id != trab -1){
-      enviarMensagem(id, id +1, dm2dGetLine(matrix, linhas - 1), sizeof(double) * colunas);
+      enviarMensagem(id, id +1, dm2dGetLine(matrix, linhas - 2), sizeof(double) * colunas);
     }
         
 
