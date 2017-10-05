@@ -16,9 +16,6 @@
 //constants
 #define MAIN_ID 0
 
-
-//Heap vars
-
 typedef struct {
   int id, n_linhas, N, iter, numIteracoes,trab;
   int tEsq, tSup, tDir, tInf;
@@ -29,31 +26,32 @@ typedef struct {
 | Function: simul_thread 
 ---------------------------------------------------------------------*/
 
-void simul_thread(int id, int n_linhas, int N, int iter, int numIteracoes, int tSup, int tInf, int tEsq, int tDir,int trab)
+void simul_thread(int id, int n_linhas, int N, int numIteracoes, int tSup, int tInf, int tEsq, int tDir,int trab)
 {
   //initializacao
+  //util para ter nocao do codigo
+  int colunas = N+2;
+  int linhas = n_linhas + 2;
+
   DoubleMatrix2D *matrix, *matrix_aux, *temp;
-  matrix = dm2dNew(n_linhas + 2, N+2);
-  matrix_aux = dm2dNew(n_linhas + 2,N+2);
+  matrix = dm2dNew(linhas, colunas);
+  matrix_aux = dm2dNew(linhas,colunas);
 
   if(id ==1){
     dm2dSetLineTo (matrix, 0, tSup);
     
   }
   if(id == trab){
-    dm2dSetLineTo (matrix, n_linhas+1, tInf);
+    dm2dSetLineTo (matrix, linhas-1, tInf);
   }
 
   dm2dSetColumnTo (matrix, 0, tEsq);
-  dm2dSetColumnTo (matrix, N+1, tDir);
+  dm2dSetColumnTo (matrix, colunas -1, tDir);
   
   //finish in the same 2 matrix
   dm2dCopy (matrix_aux, matrix);
 
-  ////////////////////////////////////////
   //processar
-  int colunas = N+2;
-  int linhas = n_linhas + 2;
   double *buffer;
   buffer = (double *) malloc(sizeof(double) * colunas);
   for (int n = 0; n < numIteracoes; ++n)
@@ -104,9 +102,8 @@ void simul_thread(int id, int n_linhas, int N, int iter, int numIteracoes, int t
   dm2dFree(matrix_aux);
   dm2dFree(matrix);
   free(buffer);
-
-
 }
+
 /*--------------------------------------------------------------------
 | Function: fnThread
 | Descricao: funcao aux que cumpre certa Interface entre
@@ -116,29 +113,9 @@ void *fnThread(void *arg) {
   Info *x;
   x = (Info*)arg;
 
-  simul_thread(x->id,x->n_linhas,x->N,x->iter,x->numIteracoes,x->tSup,x->tInf,x->tEsq,x->tDir,x->trab);
+  simul_thread(x->id,x->n_linhas,x->N,x->numIteracoes,x->tSup,x->tInf,x->tEsq,x->tDir,x->trab);
   return NULL;
 }
-// /*--------------------------------------------------------------------
-// | Function Aux: init_simul_thread, Inicializa os threads da simul
-// ---------------------------------------------------------------------*/
-// void init_simul_thread(int id,int N,int n_linhas,pthread_t* tid,int n_tarefas,DoubleMatrix2D *matrix){
-
-//   for (int i = id * n_linhas; i < n_linhas; i++)
-//   {
-    
-//   }
-
-
-
-//   if(id !=0){
-//     enviarMensagem(MAIN_ID, tid[id-1], dm2dGetLine(matrix, int line_nb), sizeof(double) * N);
-//   }
-//   //nem depois da tarefa
-//   if(id != n_tarefas -1){
-//     enviarMensagem(MAIN_ID, tid[id+1], dm2dGetLine(matrix, int line_nb), sizeof(double) * N);
-//   }
-// }
 
 /*--------------------------------------------------------------------
 | Function: simul (iterative)
@@ -220,9 +197,7 @@ int main (int argc, char** argv) {
     return 1;
   }
 
-
   DoubleMatrix2D *matrix;
-
 
   fprintf(stderr, "\nArgumentos:\n"
 	" N=%d tEsq=%.1f tSup=%.1f tDir=%.1f tInf=%.1f iteracoes=%d ntasks=%d capacidade_de_cada_canal=%d\n",
@@ -253,7 +228,6 @@ int main (int argc, char** argv) {
     args[i].N = N;
     args[i].trab = trab;
     args[i].n_linhas = n_linhas;
-    args[i].iter = 0;
     args[i].numIteracoes = iteracoes;
     args[i].tDir = tDir;
     args[i].tEsq = tEsq;
@@ -275,7 +249,6 @@ int main (int argc, char** argv) {
     int j =0;
     for (; j < n_linhas; j++)
     {
-      printf("%d",j);
       //i+1 visto q o id e index 1
       receberMensagem(i+1, MAIN_ID, fatia,sizeof(double)*(N+2));
       dm2dSetLine(matrix, i*n_linhas + j + 1, fatia);
@@ -291,13 +264,6 @@ int main (int argc, char** argv) {
       printf("Erro ao esperar por tarefa terminar.\n");
       return 2;
     }
-
-    // //put lines in matrix
-    // int j = 0;
-    // for (; j < n_linhas; j++)
-    //   dm2dSetLine(matrix, i*n_linhas + j + 1, dm2dGetLine(result, j+1));
-    // //free of each result from matrix
-    // dm2dFree(result);
   }
 
   //fazer print do result
@@ -305,6 +271,7 @@ int main (int argc, char** argv) {
 
   //free of vars
   free(args);
+  free(fatia);
   dm2dFree(matrix);
   // terminar as tarefas
   libertarMPlib();
