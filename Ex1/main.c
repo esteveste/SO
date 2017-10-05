@@ -14,7 +14,7 @@
 #include "mplib3.h"
 
 //constants
-#define MAIN_ID -1
+#define MAIN_ID 0
 
 
 //Heap vars
@@ -29,18 +29,18 @@ typedef struct {
 | Function: simul_thread 
 ---------------------------------------------------------------------*/
 
-DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numIteracoes, int tSup, int tInf, int tEsq, int tDir,int trab)
+void simul_thread(int id, int n_linhas, int N, int iter, int numIteracoes, int tSup, int tInf, int tEsq, int tDir,int trab)
 {
   //initializacao
   DoubleMatrix2D *matrix, *matrix_aux, *temp;
   matrix = dm2dNew(n_linhas + 2, N+2);
   matrix_aux = dm2dNew(n_linhas + 2,N+2);
 
-  if(id ==0){
+  if(id ==1){
     dm2dSetLineTo (matrix, 0, tSup);
     
   }
-  if(id == trab - 1){
+  if(id == trab){
     dm2dSetLineTo (matrix, n_linhas+1, tInf);
   }
 
@@ -49,7 +49,6 @@ DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numItera
   
   //finish in the same 2 matrix
   dm2dCopy (matrix_aux, matrix);
-  printf("Init finished\n");
 
   ////////////////////////////////////////
   //processar
@@ -60,11 +59,11 @@ DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numItera
   for (int n = 0; n < numIteracoes; ++n)
   {
     if(n!=0){
-      if(id !=0){
+      if(id !=1){
         receberMensagem(id -1, id, buffer,sizeof(double) * colunas);
         dm2dSetLine(matrix,0,buffer);
       }
-      if (id != trab -1)
+      if (id != trab)
       {
         receberMensagem(id +1, id, buffer,sizeof(double) * colunas);
         dm2dSetLine(matrix,n_linhas + 1,buffer);
@@ -84,19 +83,29 @@ DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numItera
     matrix_aux = temp;
 
 
-    if(id !=0){
+    if(id !=1){
       enviarMensagem(id, id -1, dm2dGetLine(matrix, 1), sizeof(double) * colunas);
     }
-    if(id != trab -1){
+    if(id != trab){
       enviarMensagem(id, id +1, dm2dGetLine(matrix, n_linhas), sizeof(double) * colunas);
     }
 
   }
+
+  // return matrix
+  int j =0;
+  for (; j < n_linhas; j++)
+  {
+    enviarMensagem(id, MAIN_ID, dm2dGetLine(matrix, j + 1), sizeof(double)*(N+2));
+  }
+  
+
   //fazer free da fatias aux e do buffer
   dm2dFree(matrix_aux);
+  dm2dFree(matrix);
   free(buffer);
 
-    return matrix;
+
 }
 /*--------------------------------------------------------------------
 | Function: fnThread
@@ -105,13 +114,10 @@ DoubleMatrix2D *simul_thread(int id, int n_linhas, int N, int iter, int numItera
 ---------------------------------------------------------------------*/
 void *fnThread(void *arg) {
   Info *x;
-  DoubleMatrix2D *r;
   x = (Info*)arg;
-  //can the output be a pointer?
-  // r = (double*)malloc(sizeof(int));
 
-  r = simul_thread(x->id,x->n_linhas,x->N,x->iter,x->numIteracoes,x->tSup,x->tInf,x->tEsq,x->tDir,x->trab);
-  return r;
+  simul_thread(x->id,x->n_linhas,x->N,x->iter,x->numIteracoes,x->tSup,x->tInf,x->tEsq,x->tDir,x->trab);
+  return NULL;
 }
 // /*--------------------------------------------------------------------
 // | Function Aux: init_simul_thread, Inicializa os threads da simul
@@ -215,7 +221,7 @@ int main (int argc, char** argv) {
   }
 
 
-  DoubleMatrix2D *matrix,*result;
+  DoubleMatrix2D *matrix;
 
 
   fprintf(stderr, "\nArgumentos:\n"
@@ -230,8 +236,8 @@ int main (int argc, char** argv) {
 
   //Fim initializar Matrizes
 
-
-  inicializarMPlib(csz,trab);
+  // + 1 because of Main
+  inicializarMPlib(csz,trab + 1);
 
   //threading
   pthread_t tid[trab];
@@ -243,7 +249,7 @@ int main (int argc, char** argv) {
   int i = 0;
   for (; i<trab; i++) {
     //init args
-    args[i].id = i;
+    args[i].id = i+1;
     args[i].N = N;
     args[i].trab = trab;
     args[i].n_linhas = n_linhas;
@@ -263,19 +269,35 @@ int main (int argc, char** argv) {
     printf("Lancou uma tarefa nr: %d\n",i);
   }
 
+  double* fatia = (double*)malloc(sizeof(double)*(N+2));
+  //receive output from threads
+  for (i=0; i<trab; i++) {
+    int j =0;
+    for (; j < n_linhas; j++)
+    {
+      printf("%d",j);
+      //i+1 visto q o id e index 1
+      receberMensagem(i+1, MAIN_ID, fatia,sizeof(double)*(N+2));
+      dm2dSetLine(matrix, i*n_linhas + j + 1, fatia);
+    }
+
+  }
+
+
+
   //wait for finish thread
   for (i=0; i<trab; i++) {
-    if (pthread_join (tid[i], (void**)&result) != 0) {
-      printf("Erro ao esperar por tarefa.\n");
+    if (pthread_join (tid[i], NULL) != 0) {
+      printf("Erro ao esperar por tarefa terminar.\n");
       return 2;
     }
 
-    //put lines in matrix
-    int j = 0;
-    for (; j < n_linhas; j++)
-      dm2dSetLine(matrix, i*n_linhas + j + 1, dm2dGetLine(result, j+1));
-    //free of each result from matrix
-    dm2dFree(result);
+    // //put lines in matrix
+    // int j = 0;
+    // for (; j < n_linhas; j++)
+    //   dm2dSetLine(matrix, i*n_linhas + j + 1, dm2dGetLine(result, j+1));
+    // //free of each result from matrix
+    // dm2dFree(result);
   }
 
   //fazer print do result
