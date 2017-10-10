@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <pthread.h>
+#include <errno.h>
 
 #include "matrix2d.h"
 #include "mplib3.h"
@@ -212,7 +213,8 @@ int main (int argc, char** argv) {
   //Fim initializar Matrizes
 
   // + 1 because of Main
-  inicializarMPlib(csz,trab + 1);
+  if (inicializarMPlib(csz,trab + 1)==-1){//error handling
+    perror("Erro ao inicializar MPLib.");}
 
   //threading
   pthread_t tid[trab];
@@ -250,7 +252,8 @@ int main (int argc, char** argv) {
     for (; j < n_linhas; j++)
     {
       //i+1 visto q o id e index 1
-      receberMensagem(i+1, MAIN_ID, fatia,sizeof(double)*(N+2));
+      if(receberMensagem(i+1, MAIN_ID, fatia,sizeof(double)*(N+2))==-1){
+        perror("Error Receiving Message in Main");}
       dm2dSetLine(matrix, i*n_linhas + j + 1, fatia);
     }
 
