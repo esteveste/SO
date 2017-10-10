@@ -1,3 +1,4 @@
+
 /*
 // Projeto SO - exercicio 1, version 03
 // Sistemas Operativos, DEI/IST/ULisboa 2017-18
@@ -59,12 +60,14 @@ void simul_thread(int id, int n_linhas, int N, int numIteracoes, int tSup, int t
   {
     if(n!=0){
       if(id !=1){
-        receberMensagem(id -1, id, buffer,sizeof(double) * colunas);
+        if(receberMensagem(id -1, id, buffer,sizeof(double) * colunas) == -1)
+          perror("Error Receiving Message from previous thread");
         dm2dSetLine(matrix,0,buffer);
       }
       if (id != trab)
       {
-        receberMensagem(id +1, id, buffer,sizeof(double) * colunas);
+        if(receberMensagem(id +1, id, buffer,sizeof(double) * colunas) == -1)
+          perror("Error Receiving Message from next thread");
         dm2dSetLine(matrix,n_linhas + 1,buffer);
       }
 
@@ -83,19 +86,23 @@ void simul_thread(int id, int n_linhas, int N, int numIteracoes, int tSup, int t
 
 
     if(id !=1){
-      enviarMensagem(id, id -1, dm2dGetLine(matrix, 1), sizeof(double) * colunas);
-    }
-    if(id != trab){
-      enviarMensagem(id, id +1, dm2dGetLine(matrix, n_linhas), sizeof(double) * colunas);
+
+      if (enviarMensagem(id, id -1, dm2dGetLine(matrix, 1), sizeof(double) * colunas) == -1)
+        perror("Error Sending Message to previous thread");
+      
     }
 
+    if(id != trab){
+      if(enviarMensagem(id, id +1, dm2dGetLine(matrix, n_linhas), sizeof(double) * colunas) == -1)
+        perror("Error Sending Message to next thread");
   }
 
   // return matrix
   int j =0;
   for (; j < n_linhas; j++)
   {
-    enviarMensagem(id, MAIN_ID, dm2dGetLine(matrix, j + 1), sizeof(double)*(N+2));
+    if(enviarMensagem(id, MAIN_ID, dm2dGetLine(matrix, j + 1), sizeof(double)*(N+2)) == -1)
+      perror("Error Sending Message to Main");
   }
   
 
@@ -238,7 +245,7 @@ int main (int argc, char** argv) {
 
 
     if (pthread_create (&tid[i], NULL, fnThread, &args[i]) != 0){
-      printf("Erro ao criar tarefa.\n");
+      perror("Erro ao criar tarefa.");
       return 1;
     }
 
@@ -264,7 +271,7 @@ int main (int argc, char** argv) {
   //wait for finish thread
   for (i=0; i<trab; i++) {
     if (pthread_join (tid[i], NULL) != 0) {
-      printf("Erro ao esperar por tarefa terminar.\n");
+      perror("Erro ao esperar por tarefa terminar.\n");
       return 2;
     }
   }
