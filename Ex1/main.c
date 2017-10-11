@@ -58,22 +58,6 @@ void simul_thread(int id, int n_linhas, int N, int numIteracoes, int tSup, int t
   buffer = (double *) malloc(sizeof(double) * colunas);
   for (int n = 0; n < numIteracoes; ++n)
   {
-    if(n!=0){
-      if(id !=1){
-        if(receberMensagem(id -1, id, buffer,sizeof(double) * colunas) == -1)
-          perror("Error Receiving Message from previous thread");
-        dm2dSetLine(matrix,0,buffer);
-      }
-      if (id != trab)
-      {
-        if(receberMensagem(id +1, id, buffer,sizeof(double) * colunas) == -1)
-          perror("Error Receiving Message from next thread");
-        dm2dSetLine(matrix,n_linhas + 1,buffer);
-      }
-
-    }
-
-
     //calculation
     for (int i = 1; i < linhas-1; ++i)
       for (int j = 1; j < colunas-1; ++j)
@@ -84,27 +68,38 @@ void simul_thread(int id, int n_linhas, int N, int numIteracoes, int tSup, int t
     matrix = matrix_aux;
     matrix_aux = temp;
 
-
+    if(id !=1){
+      if(receberMensagem(id -1, id, buffer,sizeof(double) * colunas) == -1){
+        perror("Error Receiving Message from previous thread");exit(1);}
+      dm2dSetLine(matrix,0,buffer);
+    }
     if(id !=1){
 
-      if (enviarMensagem(id, id -1, dm2dGetLine(matrix, 1), sizeof(double) * colunas) == -1)
-        perror("Error Sending Message to previous thread");
+      if (enviarMensagem(id, id -1, dm2dGetLine(matrix, 1), sizeof(double) * colunas) == -1){
+        perror("Error Sending Message to previous thread");exit(1);}
       
     }
-
     if(id != trab){
-      if(enviarMensagem(id, id +1, dm2dGetLine(matrix, n_linhas), sizeof(double) * colunas) == -1)
-        perror("Error Sending Message to next thread");
+      if(enviarMensagem(id, id +1, dm2dGetLine(matrix, n_linhas), sizeof(double) * colunas) == -1){
+        perror("Error Sending Message to next thread");exit(1);}
   }
+    if (id != trab)
+    {
+      if(receberMensagem(id +1, id, buffer,sizeof(double) * colunas) == -1){
+        perror("Error Receiving Message from next thread");exit(1);}
+      dm2dSetLine(matrix,n_linhas + 1,buffer);
+    }
+
+}
 
   // return matrix
   int j =0;
   for (; j < n_linhas; j++)
   {
-    if(enviarMensagem(id, MAIN_ID, dm2dGetLine(matrix, j + 1), sizeof(double)*(N+2)) == -1)
-      perror("Error Sending Message to Main");
+    if(enviarMensagem(id, MAIN_ID, dm2dGetLine(matrix, j + 1), sizeof(double)*(N+2)) == -1){
+      perror("Error Sending Message to Main");exit(1);}
   }
-  
+
 
   //fazer free da fatias aux e do buffer
   dm2dFree(matrix_aux);
@@ -221,7 +216,7 @@ int main (int argc, char** argv) {
 
   // + 1 because of Main
   if (inicializarMPlib(csz,trab + 1)==-1){//error handling
-    perror("Erro ao inicializar MPLib.");}
+    perror("Erro ao inicializar MPLib.");exit(1);}
 
   //threading
   pthread_t tid[trab];
@@ -260,7 +255,7 @@ int main (int argc, char** argv) {
     {
       //i+1 visto q o id e index 1
       if(receberMensagem(i+1, MAIN_ID, fatia,sizeof(double)*(N+2))==-1){
-        perror("Error Receiving Message in Main");}
+        perror("Error Receiving Message in Main");exit(1);}
       dm2dSetLine(matrix, i*n_linhas + j + 1, fatia);
     }
 
