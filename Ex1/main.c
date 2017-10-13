@@ -28,7 +28,7 @@ typedef struct {
 | Function: simul_thread 
 ---------------------------------------------------------------------*/
 
-void simul_thread(int id, int n_linhas, int N, int numIteracoes,int trab)
+void simul_thread(int id, int n_linhas, int N, int numIteracoes, int trab)
 {
   //initializacao
   //util para ter nocao do codigo
@@ -39,18 +39,13 @@ void simul_thread(int id, int n_linhas, int N, int numIteracoes,int trab)
   fatia = dm2dNew(linhas, colunas);
   fatia_aux = dm2dNew(linhas,colunas);
 
-  //temporary buffer
-  double *buffer;
-  buffer = (double *) malloc(sizeof(double) * colunas);
-
   //receber fatia da main
   for(int n = 0;n<linhas;n++){
-    if(receberMensagem(MAIN_ID, id, buffer,sizeof(double) * colunas) == -1){
+    if(receberMensagem(MAIN_ID, id, dm2dGetLine(fatia,n),sizeof(double) * colunas) == -1){
       perror("Error Receiving Message from Main thread:Initialization");exit(1);}
-    dm2dSetLine(fatia,n,buffer);
   }
 
-  //finish in the same 2 fatia
+  //acabar com as mesmas 2 fatias
   dm2dCopy (fatia_aux, fatia);
 
   //processar
@@ -66,26 +61,25 @@ void simul_thread(int id, int n_linhas, int N, int numIteracoes,int trab)
     fatia = fatia_aux;
     fatia_aux = temp;
 
+    //enviar e receber linhas necessarias para calculos de outras threads
     if(id !=1){
-      if(receberMensagem(id -1, id, buffer,sizeof(double) * colunas) == -1){
+      if(receberMensagem(id - 1, id, dm2dGetLine(fatia,0),sizeof(double) * colunas) == -1){
         perror("Error Receiving Message from previous thread");exit(1);}
-      dm2dSetLine(fatia,0,buffer);
     }
     if(id !=1){
 
-      if (enviarMensagem(id, id -1, dm2dGetLine(fatia, 1), sizeof(double) * colunas) == -1){
+      if (enviarMensagem(id, id - 1, dm2dGetLine(fatia, 1), sizeof(double) * colunas) == -1){
         perror("Error Sending Message to previous thread");exit(1);}
       
     }
     if(id != trab){
-      if(enviarMensagem(id, id +1, dm2dGetLine(fatia, n_linhas), sizeof(double) * colunas) == -1){
+      if(enviarMensagem(id, id + 1, dm2dGetLine(fatia, n_linhas), sizeof(double) * colunas) == -1){
         perror("Error Sending Message to next thread");exit(1);}
   }
     if (id != trab)
     {
-      if(receberMensagem(id +1, id, buffer,sizeof(double) * colunas) == -1){
+      if(receberMensagem(id + 1, id, dm2dGetLine(fatia,n_linhas + 1),sizeof(double) * colunas) == -1){
         perror("Error Receiving Message from next thread");exit(1);}
-      dm2dSetLine(fatia,n_linhas + 1,buffer);
     }
 
 }
@@ -98,11 +92,9 @@ void simul_thread(int id, int n_linhas, int N, int numIteracoes,int trab)
       perror("Error Sending Message to Main");exit(1);}
   }
 
-
-  //fazer free da fatias aux e do buffer
+  //fazer free da fatias aux
   dm2dFree(fatia_aux);
   dm2dFree(fatia);
-  free(buffer);
 }
 
 /*--------------------------------------------------------------------
@@ -116,28 +108,6 @@ void *fnThread(void *arg) {
 
   simul_thread(x->id,x->n_linhas,x->N,x->numIteracoes,x->trab);
   return NULL;
-}
-
-/*--------------------------------------------------------------------
-| Function: simul (iterative)
----------------------------------------------------------------------*/
-
-DoubleMatrix2D *simul(DoubleMatrix2D *matrix, DoubleMatrix2D *matrix_aux, int linhas, int colunas, int numIteracoes) {
-  DoubleMatrix2D *temp;
-
-  for (int n = 0; n < numIteracoes; ++n)
-  {
-
-    for (int i = 1; i < linhas-1; ++i)
-      for (int j = 1; j < colunas-1; ++j)
-        dm2dSetEntry(matrix_aux,i,j,(dm2dGetEntry(matrix,i-1,j) + dm2dGetEntry(matrix,i+1,j) + dm2dGetEntry(matrix,i,j-1) + dm2dGetEntry(matrix,i,j+1))/4);
-    
-    temp = matrix;
-    matrix = matrix_aux;
-    matrix_aux = temp;
-
-  }
-    return matrix;
 }
 
 /*--------------------------------------------------------------------
@@ -262,16 +232,15 @@ int main (int argc, char** argv) {
   }
 
   //receive output from threads
-  double* fatia = (double*)malloc(sizeof(double)*(N+2));
-
   for (i=0; i<trab; i++) {
     int j =0;
     for (; j < n_linhas; j++)
     {
       //i+1 visto q o id e index 1
-      if(receberMensagem(i+1, MAIN_ID, fatia,sizeof(double)*(N+2))==-1){
+      //dm2GetLine visto q esta funcao manda o ponteiro do 1 elemento da linha 
+      //e o receber preenche esse ponteiro
+      if(receberMensagem(i+1, MAIN_ID, dm2dGetLine(matrix, i*n_linhas + j + 1),sizeof(double)*(N+2))==-1){
         perror("Error Receiving Message in Main");exit(1);}
-      dm2dSetLine(matrix, i*n_linhas + j + 1, fatia);
     }
   }
 
@@ -288,9 +257,8 @@ int main (int argc, char** argv) {
 
   //free of vars
   free(args);
-  free(fatia);
   dm2dFree(matrix);
-  // terminar as tarefas
+  // terminar o servico de troca de mensagens
   libertarMPlib();
 
   return 0;
