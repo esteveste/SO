@@ -28,82 +28,80 @@ typedef struct {
 | Function: simul_thread 
 ---------------------------------------------------------------------*/
 
-void simul_thread(int id, int n_linhas, int N, int numIteracoes, int tSup, int tInf, int tEsq, int tDir,int trab)
+void simul_thread(int id, int n_linhas, int N, int numIteracoes,int trab)
 {
   //initializacao
   //util para ter nocao do codigo
   int colunas = N+2;
   int linhas = n_linhas + 2;
 
-  DoubleMatrix2D *matrix, *matrix_aux, *temp;
-  matrix = dm2dNew(linhas, colunas);
-  matrix_aux = dm2dNew(linhas,colunas);
+  DoubleMatrix2D *fatia, *fatia_aux, *temp;
+  fatia = dm2dNew(linhas, colunas);
+  fatia_aux = dm2dNew(linhas,colunas);
 
-  if(id ==1){
-    dm2dSetLineTo (matrix, 0, tSup);
-    
-  }
-  if(id == trab){
-    dm2dSetLineTo (matrix, linhas-1, tInf);
-  }
-
-  dm2dSetColumnTo (matrix, 0, tEsq);
-  dm2dSetColumnTo (matrix, colunas -1, tDir);
-  
-  //finish in the same 2 matrix
-  dm2dCopy (matrix_aux, matrix);
-
-  //processar
+  //temporary buffer
   double *buffer;
   buffer = (double *) malloc(sizeof(double) * colunas);
+
+  //receber fatia da main
+  for(int n = 0;n<linhas;n++){
+    if(receberMensagem(MAIN_ID, id, buffer,sizeof(double) * colunas) == -1){
+      perror("Error Receiving Message from Main thread:Initialization");exit(1);}
+    dm2dSetLine(fatia,n,buffer);
+  }
+
+  //finish in the same 2 fatia
+  dm2dCopy (fatia_aux, fatia);
+
+  //processar
   for (int n = 0; n < numIteracoes; ++n)
   {
     //calculation
     for (int i = 1; i < linhas-1; ++i)
       for (int j = 1; j < colunas-1; ++j)
-        dm2dSetEntry(matrix_aux,i,j,(dm2dGetEntry(matrix,i-1,j) + dm2dGetEntry(matrix,i+1,j) + dm2dGetEntry(matrix,i,j-1) + dm2dGetEntry(matrix,i,j+1))/4);
+        dm2dSetEntry(fatia_aux,i,j,(dm2dGetEntry(fatia,i-1,j) + dm2dGetEntry(fatia,i+1,j) + dm2dGetEntry(fatia,i,j-1) + dm2dGetEntry(fatia,i,j+1))/4);
     
-    //change matrix
-    temp = matrix;
-    matrix = matrix_aux;
-    matrix_aux = temp;
+    //change fatia
+    temp = fatia;
+    fatia = fatia_aux;
+    fatia_aux = temp;
 
     if(id !=1){
       if(receberMensagem(id -1, id, buffer,sizeof(double) * colunas) == -1){
         perror("Error Receiving Message from previous thread");exit(1);}
-      dm2dSetLine(matrix,0,buffer);
+      dm2dSetLine(fatia,0,buffer);
     }
     if(id !=1){
 
-      if (enviarMensagem(id, id -1, dm2dGetLine(matrix, 1), sizeof(double) * colunas) == -1){
+      if (enviarMensagem(id, id -1, dm2dGetLine(fatia, 1), sizeof(double) * colunas) == -1){
         perror("Error Sending Message to previous thread");exit(1);}
       
     }
     if(id != trab){
-      if(enviarMensagem(id, id +1, dm2dGetLine(matrix, n_linhas), sizeof(double) * colunas) == -1){
+      if(enviarMensagem(id, id +1, dm2dGetLine(fatia, n_linhas), sizeof(double) * colunas) == -1){
         perror("Error Sending Message to next thread");exit(1);}
   }
     if (id != trab)
     {
       if(receberMensagem(id +1, id, buffer,sizeof(double) * colunas) == -1){
         perror("Error Receiving Message from next thread");exit(1);}
-      dm2dSetLine(matrix,n_linhas + 1,buffer);
+      dm2dSetLine(fatia,n_linhas + 1,buffer);
     }
 
 }
 
-  // return matrix
+  // return fatia
   int j =0;
   for (; j < n_linhas; j++)
   {
-    if(enviarMensagem(id, MAIN_ID, dm2dGetLine(matrix, j + 1), sizeof(double)*(N+2)) == -1){
+    if(enviarMensagem(id, MAIN_ID, dm2dGetLine(fatia, j + 1), sizeof(double)*(N+2)) == -1){
       perror("Error Sending Message to Main");exit(1);}
   }
 
 
   //fazer free da fatias aux e do buffer
-  dm2dFree(matrix_aux);
-  dm2dFree(matrix);
+  dm2dFree(fatia_aux);
+  dm2dFree(fatia);
   free(buffer);
 }
 
@@ -116,7 +114,7 @@ void *fnThread(void *arg) {
   Info *x;
   x = (Info*)arg;
 
-  simul_thread(x->id,x->n_linhas,x->N,x->numIteracoes,x->tSup,x->tInf,x->tEsq,x->tDir,x->trab);
+  simul_thread(x->id,x->n_linhas,x->N,x->numIteracoes,x->trab);
   return NULL;
 }
 
@@ -195,7 +193,7 @@ int main (int argc, char** argv) {
   int trab = parse_integer_or_exit(argv[7], "trab"); //nr tarefas
   int csz = parse_integer_or_exit(argv[8], "csz"); //nr mensagens por canal
 
-  if(N<1 || tEsq < 0 || tSup < 0 || tDir < 0|| tInf < 0 || iteracoes < 1 || trab < 0 || csz < 0 || N % trab != 0){
+  if(N<1 || tEsq < 0 || tSup < 0 || tDir < 0|| tInf < 0 || iteracoes < 1 || trab < 1 || csz < 0 || N % trab != 0){
     fprintf(stderr,"Contexto dos argumentos invalido\n");
     return 1;
   }
@@ -209,8 +207,16 @@ int main (int argc, char** argv) {
 
   matrix = dm2dNew(N+2, N+2);
 
+  //dm2dNew Error Handling
+  if (matrix == NULL) {
+    fprintf(stderr, "\nErro: Nao foi possivel alocar memoria para as matrizes.\n\n");
+    return -1;
+  }
+
   dm2dSetLineTo (matrix, 0, tSup);
   dm2dSetLineTo (matrix, N+1, tInf);
+  dm2dSetColumnTo (matrix, 0, tEsq);
+  dm2dSetColumnTo (matrix, N+1, tDir);
 
   //Fim initializar Matrizes
 
@@ -233,11 +239,6 @@ int main (int argc, char** argv) {
     args[i].trab = trab;
     args[i].n_linhas = n_linhas;
     args[i].numIteracoes = iteracoes;
-    args[i].tDir = tDir;
-    args[i].tEsq = tEsq;
-    args[i].tSup = tSup;
-    args[i].tInf = tInf;
-
 
     if (pthread_create (&tid[i], NULL, fnThread, &args[i]) != 0){
       perror("Erro ao criar tarefa.");
@@ -247,8 +248,22 @@ int main (int argc, char** argv) {
     printf("Lancou uma tarefa nr: %d\n",i);
   }
 
-  double* fatia = (double*)malloc(sizeof(double)*(N+2));
+  //send matrix to threads
+  int j =0;
+  int last = 0;
+  for (i=0; i<trab; i++) {
+    last += n_linhas +2;
+    for (; j < last; j++){
+      if(enviarMensagem(MAIN_ID, i+1, dm2dGetLine(matrix, j), sizeof(double) * (N+2))==-1){
+        perror("Error sending Message from Main to threads");exit(1);}
+      }
+    j-=2;
+    last-=2;
+  }
+
   //receive output from threads
+  double* fatia = (double*)malloc(sizeof(double)*(N+2));
+
   for (i=0; i<trab; i++) {
     int j =0;
     for (; j < n_linhas; j++)
@@ -258,10 +273,7 @@ int main (int argc, char** argv) {
         perror("Error Receiving Message in Main");exit(1);}
       dm2dSetLine(matrix, i*n_linhas + j + 1, fatia);
     }
-
   }
-
-
 
   //wait for finish thread
   for (i=0; i<trab; i++) {
