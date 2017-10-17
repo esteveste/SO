@@ -1,6 +1,4 @@
-# Makefile, versao 02
-# Sistemas Operativos, DEI/IST/ULisboa 2017-18
-
+#-std=gnu99 (alterar altura de compilador)
 CFLAGS= -g -Wall -pedantic
 CC=gcc
 
