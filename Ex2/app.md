@@ -15,3 +15,9 @@
 ### 1 trab
 24 secs
 
+## Ep1 ( single channel mutex + diff condtion variable)
+
+### 5 trab
+1m39secs
+### 1 trab
+24 secs
