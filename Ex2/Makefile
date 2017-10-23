@@ -28,4 +28,8 @@ zip:
 	zip heatSim_p1_solucao.zip p1_main.c matrix2d.c matrix2d.h leQueue.c leQueue.h mplib3.c mplib3.h p0_main.c Makefile
 
 run:
-	./heatSim_p1 5 10.0 10.0 0.0 0.0 10 1 0
+	./heatSim_p1 5 10.0 10.0 0.0 0.0 10 5 10
+
+
+run1:
+	./heatSim_p1 5 10.0 10.0 0.0 0.0 10 1 10
