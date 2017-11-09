@@ -203,19 +203,6 @@ int main (int argc, char** argv) {
   int n_linhas = N / trab;
   int i = 0;
 
-  //send matrix to threads
-  int j =0;
-  int last = 0;
-  for (i=0; i<trab; i++) {
-    last += n_linhas +2;
-    for (; j < last; j++){
-      printf("%d%d\n",i,j);
-      if(enviarMensagem(MAIN_ID, i+1, dm2dGetLine(matrix, j), sizeof(double) * (N+2))==-1){
-        perror("Error sending Message from Ma./heatSim 10 10.0 10.0 0.0 0.0 10 1 100000in to threads");exit(1);}
-      }
-    j-=2;
-    last-=2;
-  }
 
 
   for (; i<trab; i++) {
@@ -235,6 +222,19 @@ int main (int argc, char** argv) {
   }
 
 
+  //send matrix to threads
+  int j =0;
+  int last = 0;
+  for (i=0; i<trab; i++) {
+    last += n_linhas +2;
+    for (; j < last; j++){
+      printf("%d%d\n",i,j);
+      if(enviarMensagem(MAIN_ID, i+1, dm2dGetLine(matrix, j), sizeof(double) * (N+2))==-1){
+        perror("Error sending Message from Ma./heatSim 10 10.0 10.0 0.0 0.0 10 1 100000in to threads");exit(1);}
+      }
+    j-=2;
+    last-=2;
+  }
 
   //receive output from threads
   for (i=0; i<trab; i++) {

@@ -1,12 +1,24 @@
 # Makefile
 # Sistemas Operativos, DEI/IST/ULisboa 2017-18
 
+CFLAGS= -g -Wall -pedantic
+CC=gcc
+
 heatSim: main.o matrix2d.o
-	gcc -o heatSim main.o matrix2d.o
+	$(CC) $(CFLAGS) -pthread -o heatSim main.o matrix2d.o
 
 main.o: main.c matrix2d.h
-	gcc -g -c main.c
+	$(CC) $(CFLAGS) -c main.c
 
 matrix2d.o: matrix2d.c matrix2d.h
-	gcc -g -c matrix2d.c
+	$(CC) $(CFLAGS) -c matrix2d.c
+
+clean:
+	rm -f *.o heatSim
+
+zip:
+	zip heatSim_ex01_solucao.zip main.c matrix2d.c matrix2d.h Makefile
+
+run:
+	./heatSim 5 10.0 10.0 0.0 0.0 10
 
