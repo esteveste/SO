@@ -7,6 +7,7 @@
 check iterations finish
 
 destroy barrier
+
 */
 
 #include <stdio.h>
@@ -79,7 +80,7 @@ void esperar_por_todos(){
   count[current]--;
   if (count[current]==0)
   {
-    //fazer reset a atual para var cond
+    //fazer reset a atual para ser usada na var cond
     count[current]=tar;
     iter++;
     if(pthread_cond_broadcast(&cond[current]) != 0) {
@@ -87,8 +88,8 @@ void esperar_por_todos(){
       exit(EXIT_FAILURE);
     }
   }else{
-    //nunca se verifica num funcionamento normal
-    while (count[current]==tar)
+
+    while (count[current]!=tar)
     {
       if(pthread_cond_wait(&cond[current],&mutex) != 0) {
         fprintf(stderr, "\nErro ao esperar pela variável de condição\n");
@@ -124,7 +125,6 @@ void *simul(void* args) {
   matrix_iter[1]=arg->matrix_aux;
 
   while(iter < max_iter) {
-
     //change matrix for calculation
     atual = iter % 2;
     prox = 1 - iter % 2;
