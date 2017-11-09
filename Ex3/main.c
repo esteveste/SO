@@ -4,13 +4,9 @@
 */
 
 /*Todo:
-barreira
 check iterations finish
-alternancia matrizes, seja melhor calcular por iteracao par
 
-
-
-
+destroy barrier
 */
 
 #include <stdio.h>
@@ -25,43 +21,89 @@ alternancia matrizes, seja melhor calcular por iteracao par
 ---------------------------------------------------------------------*/
 typedef struct {
   DoubleMatrix2D *matrix, *matrix_aux;
-} *SimulArg;
-
-
-typedef struct {
-  pthread_mutex_t mutex;
-  pthread_cond_t cond1,cond2;
-} Barreira;
+  int id,N;
+} SimulArg;
 
 /*--------------------------------------------------------------------
 | Global Vars
 ---------------------------------------------------------------------*/
 DoubleMatrix2D *matrix, *matrix_aux;
 int tar; //variavel global com o nr de tarefas
-int count;//para uso no esperar por todos
+int count[2];//para uso no esperar por todos
 int iter;//current iteration
 int max_iter;//max iteration provided by user
-Barreira barreira;
+
+pthread_mutex_t mutex;
+pthread_cond_t cond[2];
 
 /*--------------------------------------------------------------------
-| Function: wait
+| Function: init_barrier
+/ initializes the barrier
+---------------------------------------------------------------------*/
+
+void init_barrier(){
+  //initialize counters
+  count[0]=tar;
+  count[1]=tar;
+
+  //initialize mutex
+  if(pthread_mutex_init(&mutex, NULL) != 0) {
+    fprintf(stderr, "\nErro ao inicializar mutex\n");
+    exit(EXIT_FAILURE);
+  }
+  if(pthread_cond_init(&cond[0], NULL) != 0) {
+    fprintf(stderr, "\nErro ao inicializar variável de condição\n");
+    exit(EXIT_FAILURE);
+  }
+
+  if(pthread_cond_init(&cond[1], NULL) != 0){
+    fprintf(stderr, "\nErro ao inicializar variável de condição\n");
+    exit(EXIT_FAILURE);
+  }
+
+}
+
+
+/*--------------------------------------------------------------------
+| Function: esperar_por_todos
 ---------------------------------------------------------------------*/
 
 void esperar_por_todos(){
-  pthread_mutex_lock(&barreira.mutex);
-  count--;
-  if (count==0)
+  if(pthread_mutex_lock(&mutex) != 0) {
+    fprintf(stderr, "\nErro ao bloquear mutex\n");
+    exit(EXIT_FAILURE);
+  }
+  //will change the barrier
+  int current = iter%2;
+
+  count[current]--;
+  if (count[current]==0)
   {
-    // pthread_cond_broadcast();
+    //fazer reset a atual para var cond
+    count[current]=tar;
+    iter++;
+    if(pthread_cond_broadcast(&cond[current]) != 0) {
+      fprintf(stderr, "\nErro ao desbloquear variável de condição\n");
+      exit(EXIT_FAILURE);
+    }
   }else{
-    // pthread_cond_wait();
+    //nunca se verifica num funcionamento normal
+    while (count[current]==tar)
+    {
+      if(pthread_cond_wait(&cond[current],&mutex) != 0) {
+        fprintf(stderr, "\nErro ao esperar pela variável de condição\n");
+        exit(EXIT_FAILURE);
+      }
+     
+    }
+    
   }
 
 
-
-
-
-  pthread_mutex_unlock(&barreira.mutex);
+  if(pthread_mutex_unlock(&mutex) != 0) {
+    fprintf(stderr, "\nErro ao bloquear mutex\n");
+    exit(EXIT_FAILURE);
+  }
 }
 
 
@@ -72,8 +114,37 @@ void esperar_por_todos(){
 ---------------------------------------------------------------------*/
 
 void *simul(void* args) {
+  SimulArg* arg = (SimulArg *)args;
+  int i,j;
+  int tam_fatia = arg->N /tar;
+  int atual,prox;//for keep changing matrix
 
+  DoubleMatrix2D *matrix_iter[2];
+  matrix_iter[0]=arg->matrix;
+  matrix_iter[1]=arg->matrix_aux;
 
+  while(iter < max_iter) {
+
+    //change matrix for calculation
+    atual = iter % 2;
+    prox = 1 - iter % 2;
+    
+    /* Calcular Pontos Internos */
+    for (i = tam_fatia * arg->id; i < tam_fatia * (arg->id + 1); i++) {
+      for (j = 0; j < arg->N; j++) {
+        double val = (dm2dGetEntry(matrix_iter[atual], i, j+1) +
+                      dm2dGetEntry(matrix_iter[atual], i+2, j+1) +
+                      dm2dGetEntry(matrix_iter[atual], i+1, j) +
+                      dm2dGetEntry(matrix_iter[atual], i+1, j+2))/4;
+        dm2dSetEntry(matrix_iter[prox], i+1, j+1, val);
+        }
+    }
+
+    esperar_por_todos();
+  
+  }
+
+  return NULL;
 }
 
 /*--------------------------------------------------------------------
@@ -142,8 +213,7 @@ int main (int argc, char** argv) {
   }  
   ///////////////////////
 
-  count = tar;//definir o count para o espera por todos
-
+  init_barrier();
 
   matrix = dm2dNew(N+2, N+2);
   matrix_aux = dm2dNew(N+2, N+2);
@@ -173,7 +243,7 @@ int main (int argc, char** argv) {
   // dm2dPrint(result);
 
   /* Reservar Memória para Trabalhadoras */
-  SimulArg simul_args = (SimulArg)malloc(tar * sizeof(SimulArg));
+  SimulArg* simul_args = (SimulArg *)malloc(tar * sizeof(SimulArg));
   pthread_t* tid = (pthread_t *)malloc(tar * sizeof(pthread_t));
 
   if (simul_args == NULL || tid == NULL) {
@@ -185,6 +255,8 @@ int main (int argc, char** argv) {
   for (i = 0; i < tar; i++) {
     simul_args[i].matrix=matrix;
     simul_args[i].matrix_aux = matrix_aux;
+    simul_args[i].id = i;
+    simul_args[i].N = N;
     res = pthread_create(&tid[i], NULL, simul, &simul_args[i]);
 
     if(res != 0) {
@@ -206,10 +278,21 @@ int main (int argc, char** argv) {
     }  
   }
 
-
-
+  /* Imprimir resultado */
+  if(iter%2){ 
+    //e ao contrario da simul
+    dm2dPrint(matrix_aux);
+  }else
+  {
+    dm2dPrint(matrix);
+    
+  }
+  
+  /* Libertar Memória */
   dm2dFree(matrix);
   dm2dFree(matrix_aux);
+  free(simul_args);
+  free(tid);
 
   return 0;
 }
