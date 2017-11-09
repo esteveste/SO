@@ -64,7 +64,27 @@ void init_barrier(){
 
 }
 
+/*--------------------------------------------------------------------
+| Function: destroy_barrier
+/ destroyes the barrier
+---------------------------------------------------------------------*/
 
+void destroy_barrier(){
+
+  if(pthread_mutex_destroy(&mutex) != 0) {
+    fprintf(stderr, "\nErro ao destruir mutex\n");
+    exit(EXIT_FAILURE);
+  }
+  if(pthread_cond_destroy(&cond[0]) != 0) {
+    fprintf(stderr, "\nErro ao destruir variável de condição\n");
+    exit(EXIT_FAILURE);
+  }
+
+  if(pthread_cond_destroy(&cond[1]) != 0) {
+    fprintf(stderr, "\nErro ao destruir variável de condição\n");
+    exit(EXIT_FAILURE);
+  }
+}
 /*--------------------------------------------------------------------
 | Function: esperar_por_todos
 ---------------------------------------------------------------------*/
@@ -289,6 +309,7 @@ int main (int argc, char** argv) {
   }
   
   /* Libertar Memória */
+  destroy_barrier();
   dm2dFree(matrix);
   dm2dFree(matrix_aux);
   free(simul_args);
