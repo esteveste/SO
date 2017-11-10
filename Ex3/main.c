@@ -16,6 +16,7 @@ destroy barrier
 #include <pthread.h>
 
 #include "matrix2d.h"
+#include <math.h>
 
 /*--------------------------------------------------------------------
 | Estruturas
@@ -23,6 +24,7 @@ destroy barrier
 typedef struct {
   DoubleMatrix2D *matrix, *matrix_aux;
   int id,N;
+  double maxD;
 } SimulArg;
 
 /*--------------------------------------------------------------------
@@ -33,6 +35,8 @@ int tar; //variavel global com o nr de tarefas
 int count[2];//para uso no esperar por todos
 int iter;//current iteration
 int max_iter;//max iteration provided by user
+//1 when is over,(1 because only when we dont set is over)
+int is_finished =1;
 
 pthread_mutex_t mutex;
 pthread_cond_t cond[2];
@@ -156,10 +160,30 @@ void *simul(void* args) {
                       dm2dGetEntry(matrix_iter[atual], i+2, j+1) +
                       dm2dGetEntry(matrix_iter[atual], i+1, j) +
                       dm2dGetEntry(matrix_iter[atual], i+1, j+2))/4;
+        
+        //verificamos se ainda existe algum calculo acima do maxD
+        //nao usamos mutexes pk a verificacao so e feita apos de se esperar q todos
+        //o q implica q a alteracao e feita concorrentemente para o mesmo valor
+        // e a verificacao so e verificada apos todas terem alterado
+        // printf("%f\n",fabs(dm2dGetEntry(matrix_iter[prox], i+1, j+1) - val));
+        if(fabs(dm2dGetEntry(matrix_iter[prox], i+1, j+1) - val) >= arg->maxD){
+          is_finished = 0;
+        }
         dm2dSetEntry(matrix_iter[prox], i+1, j+1, val);
+
+
+
         }
     }
 
+    esperar_por_todos();
+    //if is over  
+    if (is_finished)
+      break;//get of the calculation
+    //espera q todos facam a verificacao ao mesmo tempo
+    esperar_por_todos();
+
+    is_finished=1;//reset flag
     esperar_por_todos();
   
   }
@@ -277,6 +301,7 @@ int main (int argc, char** argv) {
     simul_args[i].matrix_aux = matrix_aux;
     simul_args[i].id = i;
     simul_args[i].N = N;
+    simul_args[i].maxD=maxD;
     res = pthread_create(&tid[i], NULL, simul, &simul_args[i]);
 
     if(res != 0) {
