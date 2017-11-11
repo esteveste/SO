@@ -1,14 +1,8 @@
 /*
-// Projeto SO - exercicio 1, version 03
+// 3 Projeto SO 
 // Sistemas Operativos, DEI/IST/ULisboa 2017-18
 */
 
-/*Todo:
-check iterations finish
-
-destroy barrier
-
-*/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +16,7 @@ destroy barrier
 | Estruturas
 ---------------------------------------------------------------------*/
 typedef struct{
-  int counterMax;
+  int reset_counter;
   int count[2];//para uso no esperar por todos
   pthread_mutex_t mutex;
   pthread_cond_t cond;
@@ -31,36 +25,31 @@ typedef struct{
 typedef struct {
   DoubleMatrix2D *matrix, *matrix_aux;
   Barrier* bar;
-  int id,N;
+  int id,N,max_iter,tam_fatia;
   double maxD;
 } SimulArg;
 
 /*--------------------------------------------------------------------
 | Global Vars
 ---------------------------------------------------------------------*/
-DoubleMatrix2D *matrix, *matrix_aux;
-int tar; //variavel global com o nr de tarefas
-// int iter;//current iteration
-int max_iter;//max iteration provided by user
-//1 when is over,(1 because only when we dont set is over)
-int is_finished =1;
-int last_iter;
-
+//ambas podiam estar em estrutura para evitar variaveis globais mas so
+//complicava o codigo, (static para limited scope, so para este ficheiro)
+static int is_finished =1;//1 when is over,(1 because only when we dont set is over)
+static int last_iter;//so we know which matrix is the result
 
 /*--------------------------------------------------------------------
 | Function: init_barrier
-/ initializes the barrier
+/ initializes the barrier,to simplefy code also contains error handle
 ---------------------------------------------------------------------*/
 
 Barrier* new_barrier(int counterMax){
   //create a Barreira object
   Barrier* bar = (Barrier*)malloc(sizeof(Barrier));
 
-
   //initialize counters
   bar->count[0]=counterMax;
   bar->count[1]=counterMax;
-
+  bar->reset_counter=counterMax;
   //initialize mutex
   if(pthread_mutex_init(&bar->mutex, NULL) != 0) {
     fprintf(stderr, "\nErro ao inicializar mutex\n");
@@ -75,7 +64,7 @@ Barrier* new_barrier(int counterMax){
 
 /*--------------------------------------------------------------------
 | Function: destroy_barrier
-/ destroyes the barrier
+/ destroyes the barrier,to simplefy code also contains error handle
 ---------------------------------------------------------------------*/
 
 void destroy_barrier(Barrier* bar){
@@ -93,10 +82,12 @@ void destroy_barrier(Barrier* bar){
 
 }
 /*--------------------------------------------------------------------
-| Function: esperar_por_todos
+| Function: wait_barrier
+/ implementation of barrier,to simplefy code also contains error handle
+/ in function
 ---------------------------------------------------------------------*/
 
-void esperar_por_todos(Barrier* bar){
+void wait_barrier(Barrier* bar){
   if(pthread_mutex_lock(&bar->mutex) != 0) {
     fprintf(stderr, "\nErro ao bloquear mutex\n");
     exit(EXIT_FAILURE);
@@ -108,7 +99,7 @@ void esperar_por_todos(Barrier* bar){
   if (bar->count[current]==0)
   {
     //fazer reset a atual para ser usada na var cond
-    bar->count[current]=tar;
+    bar->count[current]=bar->reset_counter;
     current = (current+1)%2;//mudar de contador
 
     if(pthread_cond_broadcast(&bar->cond) != 0) {
@@ -145,21 +136,21 @@ void esperar_por_todos(Barrier* bar){
 void *simul(void* args) {
   SimulArg* arg = (SimulArg *)args;
   int i,j;
-  int tam_fatia = arg->N /tar;
   int atual,prox;//for keep changing matrix
   int iter;
 
+  //building an alternating matrix
   DoubleMatrix2D *matrix_iter[2];
   matrix_iter[0]=arg->matrix;
   matrix_iter[1]=arg->matrix_aux;
 
-  for(iter = 0;iter < max_iter;iter++) {
+  for(iter = 0;iter < arg->max_iter;iter++) {
     //change matrix for calculation
     atual = iter % 2;
     prox = 1 - iter % 2;
     
     /* Calcular Pontos Internos */
-    for (i = tam_fatia * arg->id; i < tam_fatia * (arg->id + 1); i++) {
+    for (i = arg->tam_fatia * arg->id; i < arg->tam_fatia * (arg->id + 1); i++) {
       for (j = 0; j < arg->N; j++) {
         double val = (dm2dGetEntry(matrix_iter[atual], i, j+1) +
                       dm2dGetEntry(matrix_iter[atual], i+2, j+1) +
@@ -174,26 +165,24 @@ void *simul(void* args) {
           is_finished = 0;
         }
         dm2dSetEntry(matrix_iter[prox], i+1, j+1, val);
-
-
-
         }
     }
 
-    esperar_por_todos(arg->bar);
+    wait_barrier(arg->bar);
     //if is over  
     if (is_finished)
       break;//get of the calculation
     //espera q todos facam a verificacao ao mesmo tempo
-    esperar_por_todos(arg->bar);
-
-    is_finished=1;//reset flag
-    esperar_por_todos(arg->bar);
+    wait_barrier(arg->bar);
+    //fazemos reset e esperamos por todos antes da prox iteracao
+    is_finished=1;
+    wait_barrier(arg->bar);
   
   }
-  //como todos sao iguais e a verificacao so e feita dps de todos
-  // terminarem nao precisamos de mutex
+  //como todos sao iguais e a verificacao so e feita quando vao todos
+  // terminar nao precisamos de mutex
   last_iter=iter;
+
   return NULL;
 }
 
@@ -227,7 +216,6 @@ double parse_double_or_exit(char const *str, char const *name)
   return value;
 }
 
-
 /*--------------------------------------------------------------------
 | Function: main
 ---------------------------------------------------------------------*/
@@ -246,8 +234,8 @@ int main (int argc, char** argv) {
   double tSup = parse_double_or_exit(argv[3], "tSup");
   double tDir = parse_double_or_exit(argv[4], "tDir");
   double tInf = parse_double_or_exit(argv[5], "tInf");
-  max_iter = parse_integer_or_exit(argv[6], "max_iter");
-  tar = parse_integer_or_exit(argv[7], "tarefas"); //var global
+  int max_iter = parse_integer_or_exit(argv[6], "max_iter");
+  int tar = parse_integer_or_exit(argv[7], "tarefas"); //var global
   double maxD = parse_double_or_exit(argv[8], "maxD");
 
 
@@ -264,7 +252,8 @@ int main (int argc, char** argv) {
   ///////////////////////
   //Ur barrier for simul
   Barrier* bar = new_barrier(tar);
-
+  //DoubleMatrix also does malloc
+  DoubleMatrix2D *matrix, *matrix_aux;
   matrix = dm2dNew(N+2, N+2);
   matrix_aux = dm2dNew(N+2, N+2);
 
@@ -283,15 +272,6 @@ int main (int argc, char** argv) {
 
   dm2dCopy (matrix_aux, matrix);
 
-  // result = simul(matrix, matrix_aux, N+2, N+2, max_iter);
-
-  // if (result == NULL) {
-  //   printf("\nErro na simulacao.\n\n");
-  //   return -1;
-  // }
-
-  // dm2dPrint(result);
-
   /* Reservar Memória para Trabalhadoras */
   SimulArg* simul_args = (SimulArg *)malloc(tar * sizeof(SimulArg));
   pthread_t* tid = (pthread_t *)malloc(tar * sizeof(pthread_t));
@@ -309,6 +289,8 @@ int main (int argc, char** argv) {
     simul_args[i].N = N;
     simul_args[i].maxD=maxD;
     simul_args[i].bar=bar;
+    simul_args[i].max_iter=max_iter;
+    simul_args[i].tam_fatia = N/tar;
     res = pthread_create(&tid[i], NULL, simul, &simul_args[i]);
 
     if(res != 0) {
@@ -316,9 +298,6 @@ int main (int argc, char** argv) {
       return -1;
     }
   }
-
-
-
 
   /* Esperar que as Trabalhadoras Terminem */
   for (i = 0; i < tar; i++) {
