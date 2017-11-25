@@ -12,6 +12,10 @@
 #include "matrix2d.h"
 #include <math.h>
 
+
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 /*--------------------------------------------------------------------
 | Estruturas
 ---------------------------------------------------------------------*/
@@ -37,6 +41,16 @@ typedef struct {
 static int is_finished =1;//1 when is over,(1 because only when we dont set is over)
 static int flag_exit_thread=0;//alterado para exercicio
 static int last_iter;//so we know which matrix is the result
+char* file_name;
+int periodoS;
+
+/*--------------------------------------------------------------------
+| Function: auto_save_handler
+/ Function that handles the new process created for auto saving the matrix
+---------------------------------------------------------------------*/
+void auto_save_handler(){
+
+}
 
 /*--------------------------------------------------------------------
 | Function: init_barrier
@@ -88,7 +102,7 @@ void destroy_barrier(Barrier* bar){
 / in function
 ---------------------------------------------------------------------*/
 
-void wait_barrier(Barrier* bar){
+void wait_barrier(Barrier* bar,int iter){
   if(pthread_mutex_lock(&bar->mutex) != 0) {
     fprintf(stderr, "\nErro ao bloquear mutex\n");
     exit(EXIT_FAILURE);
@@ -109,6 +123,23 @@ void wait_barrier(Barrier* bar){
       is_finished=1;
     }
     
+    //Auto save
+    if(periodoS!=0 && iter % periodoS==0){
+      pid_t pid = fork();
+      if(pid==-1){
+        fprintf(stderr, "\nErro ao criar um processo\n");
+        exit(EXIT_FAILURE);
+      }else if (pid == 0){
+        // child process
+        auto_save_handler();
+      }else{
+        // parent process
+        //we wait for child to finish saving
+        wait(NULL);
+      }
+    }
+
+
     if(pthread_cond_broadcast(&bar->cond) != 0) {
       fprintf(stderr, "\nErro ao desbloquear variável de condição\n");
       exit(EXIT_FAILURE);
@@ -175,19 +206,11 @@ void *simul(void* args) {
         }
     }
 
-    wait_barrier(arg->bar);
+    wait_barrier(arg->bar,iter);
     //if is over  
     if (flag_exit_thread)
       break;//get of the calculation
 
-
-    //Exercicio tem de ser realizado com barrier alterado do enviado
-
-    // //espera q todos facam a verificacao ao mesmo tempo
-    // wait_barrier(arg->bar);
-    // //fazemos reset e esperamos por todos antes da prox iteracao
-    // is_finished=1;
-    // wait_barrier(arg->bar);
   
   }
   //como todos sao iguais e a verificacao so e feita quando vao todos
@@ -233,7 +256,7 @@ double parse_double_or_exit(char const *str, char const *name)
 
 int main (int argc, char** argv) {
 
-  if(argc != 9) {
+  if(argc != 11) {
     fprintf(stderr, "\nNumero invalido de argumentos.\n");
     fprintf(stderr, "Uso: heatSim N tEsq tSup tDir tInf max_iter tarefas maxD\n\n");
     return 1;
@@ -248,14 +271,15 @@ int main (int argc, char** argv) {
   int max_iter = parse_integer_or_exit(argv[6], "max_iter");
   int tar = parse_integer_or_exit(argv[7], "tarefas"); //var global
   double maxD = parse_double_or_exit(argv[8], "maxD");
-
+  file_name = argv[9];
+  periodoS = parse_integer_or_exit(argv[10],"PeriodoS");
 
   /* Verificacao argumentos*/
   fprintf(stderr, "\nArgumentos:\n"
-	" N=%d tEsq=%.1f tSup=%.1f tDir=%.1f tInf=%.1f max_iter=%d tarefas=%d maxD=%.1f\n",
-	N, tEsq, tSup, tDir, tInf, max_iter,tar,maxD);
+	" N=%d tEsq=%.1f tSup=%.1f tDir=%.1f tInf=%.1f max_iter=%d tarefas=%d maxD=%.1f fichS=%s periodoS=%d\n",
+	N, tEsq, tSup, tDir, tInf, max_iter,tar,maxD,file_name,periodoS);
 
-  if(N < 1 || tEsq < 0 || tSup < 0 || tDir < 0 || tInf < 0 || max_iter < 1 || tar < 1 || maxD<0) {
+  if(N < 1 || tEsq < 0 || tSup < 0 || tDir < 0 || tInf < 0 || max_iter < 1 || tar < 1 || maxD<0 || periodoS<0) {
     fprintf(stderr, "\nErro: Argumentos invalidos.\n"
 	" Lembrar que N >= 1, temperaturas >= 0, max_iter >= 1, tarefas >= 1 e maxD >= 0\n\n");
     return 1;
@@ -263,25 +287,48 @@ int main (int argc, char** argv) {
   ///////////////////////
   //Ur barrier for simul
   Barrier* bar = new_barrier(tar);
+
+
   //DoubleMatrix also does malloc
   DoubleMatrix2D *matrix, *matrix_aux;
-  matrix = dm2dNew(N+2, N+2);
+
+  // Load matrix from file if exists
+  FILE *f = fopen(file_name,"r");
+  if(f!=NULL){
+
+    matrix = readMatrix2dFromFile(f,N+2,N+2);
+    if (matrix == NULL) {
+      fprintf(stderr, "\nErro: Nao foi possivel ler a matrix no ficheiro.\n\n");
+      return -1;
+    }
+
+    //close stream
+    fclose(f);
+  }else{
+    //No file found, create matrix from scratch
+    matrix = dm2dNew(N+2, N+2);
+    if (matrix == NULL) {
+      fprintf(stderr, "\nErro: Nao foi possivel alocar memoria para a matrix.\n\n");
+      return -1;
+    }
+
+    dm2dSetLineTo (matrix, 0, tSup);
+    dm2dSetLineTo (matrix, N+1, tInf);
+    dm2dSetColumnTo (matrix, 0, tEsq);
+    dm2dSetColumnTo (matrix, N+1, tDir);
+  }
+
   matrix_aux = dm2dNew(N+2, N+2);
 
-  if (matrix == NULL || matrix_aux == NULL) {
-    fprintf(stderr, "\nErro: Nao foi possivel alocar memoria para as matrizes.\n\n");
+  if (matrix_aux == NULL) {
+    fprintf(stderr, "\nErro: Nao foi possivel alocar memoria para a matrix aux.\n\n");
     return -1;
   }
+  //copy both
+  dm2dCopy (matrix_aux, matrix);
 
   int i;
   int res;//used for error handle
-
-  dm2dSetLineTo (matrix, 0, tSup);
-  dm2dSetLineTo (matrix, N+1, tInf);
-  dm2dSetColumnTo (matrix, 0, tEsq);
-  dm2dSetColumnTo (matrix, N+1, tDir);
-
-  dm2dCopy (matrix_aux, matrix);
 
   /* Reservar Memória para Trabalhadoras */
   SimulArg* simul_args = (SimulArg *)malloc(tar * sizeof(SimulArg));
