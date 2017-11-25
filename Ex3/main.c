@@ -155,7 +155,7 @@ void *simul(void* args) {
     //change matrix for calculation
     atual = iter % 2;
     prox = 1 - iter % 2;
-    
+
     /* Calcular Pontos Internos */
     for (i = arg->tam_fatia * arg->id; i < arg->tam_fatia * (arg->id + 1); i++) {
       for (j = 0; j < arg->N; j++) {
@@ -177,8 +177,9 @@ void *simul(void* args) {
 
     wait_barrier(arg->bar);
     //if is over  
-    if (flag_exit_thread)
+    if (flag_exit_thread){
       break;//get of the calculation
+    }
 
 
     //Exercicio tem de ser realizado com barrier alterado do enviado
@@ -192,7 +193,7 @@ void *simul(void* args) {
   }
   //como todos sao iguais e a verificacao so e feita quando vao todos
   // terminar nao precisamos de mutex
-  last_iter=iter;
+  last_iter=iter+1;
 
   return NULL;
 }

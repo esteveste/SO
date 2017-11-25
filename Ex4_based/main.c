@@ -39,7 +39,6 @@ typedef struct {
 //complicava o codigo, (static para limited scope, so para este ficheiro)
 static int is_finished =1;//1 when is over,(1 because only when we dont set is over)
 static int flag_exit_thread=0;//alterado para exercicio
-static int last_iter;//so we know which matrix is the result
 char* file_name;
 int periodoS;
 DoubleMatrix2D *matrix, *matrix_aux;
@@ -49,6 +48,15 @@ DoubleMatrix2D *matrix, *matrix_aux;
 / Function that handles the new process created for auto saving the matrix
 ---------------------------------------------------------------------*/
 void auto_save_handler(){
+  FILE *f=fopen(file_name,"w");//write over the file
+  if (f==NULL)
+  {
+    fprintf(stderr, "\nErro abrir ficheiro para escrita\n");
+    exit(EXIT_FAILURE);
+  }
+
+  saveMatrix2dToFile(f,matrix);
+  fclose(f);
   exit(EXIT_SUCCESS);
 }
 
@@ -121,7 +129,7 @@ void wait_barrier(Barrier* bar,int iter){
     DoubleMatrix2D *temp = matrix;
     matrix = matrix_aux;
     matrix_aux = temp;
-
+    //finish matrix flag
     if(is_finished){
       flag_exit_thread = 1;
     }else{
@@ -207,12 +215,7 @@ void *simul(void* args) {
     if (flag_exit_thread)
       break;//get of the calculation
 
-  
   }
-  //como todos sao iguais e a verificacao so e feita quando vao todos
-  // terminar nao precisamos de mutex
-  last_iter=iter;
-
   return NULL;
 }
 
@@ -287,17 +290,13 @@ int main (int argc, char** argv) {
   // Load matrix from file if exists
   FILE *f = fopen(file_name,"r");
   if(f!=NULL){
-
+    //try to read
     matrix = readMatrix2dFromFile(f,N+2,N+2);
-    if (matrix == NULL) {
-      fprintf(stderr, "\nErro: Nao foi possivel ler a matrix no ficheiro.\n\n");
-      return -1;
-    }
-
     //close stream
     fclose(f);
-  }else{
-    //No file found, create matrix from scratch
+  }
+  if (matrix == NULL) {
+    //No file found or corrupted, create matrix from scratch
     matrix = dm2dNew(N+2, N+2);
     if (matrix == NULL) {
       fprintf(stderr, "\nErro: Nao foi possivel alocar memoria para a matrix.\n\n");
@@ -360,6 +359,10 @@ int main (int argc, char** argv) {
   /* Imprimir resultado */
   dm2dPrint(matrix);
 
+  /* Remover ficheiro de calculo */
+  if(periodoS!=0&&remove(file_name)!=0){
+    fprintf(stderr, "\nErro apagar ficheiro.\n"); 
+  }
   /* Libertar Memória */
   destroy_barrier(bar);
   dm2dFree(matrix);
