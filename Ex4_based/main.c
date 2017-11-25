@@ -27,7 +27,6 @@ typedef struct{
 } Barrier;
 
 typedef struct {
-  DoubleMatrix2D *matrix, *matrix_aux;
   Barrier* bar;
   int id,N,max_iter,tam_fatia;
   double maxD;
@@ -43,13 +42,14 @@ static int flag_exit_thread=0;//alterado para exercicio
 static int last_iter;//so we know which matrix is the result
 char* file_name;
 int periodoS;
+DoubleMatrix2D *matrix, *matrix_aux;
 
 /*--------------------------------------------------------------------
 | Function: auto_save_handler
 / Function that handles the new process created for auto saving the matrix
 ---------------------------------------------------------------------*/
 void auto_save_handler(){
-
+  exit(EXIT_SUCCESS);
 }
 
 /*--------------------------------------------------------------------
@@ -117,6 +117,11 @@ void wait_barrier(Barrier* bar,int iter){
     bar->count[current]=bar->reset_counter;
     current = (current+1)%2;//mudar de contador
 
+    //put the new calculated matrix in to matrix
+    DoubleMatrix2D *temp = matrix;
+    matrix = matrix_aux;
+    matrix_aux = temp;
+
     if(is_finished){
       flag_exit_thread = 1;
     }else{
@@ -174,35 +179,26 @@ void wait_barrier(Barrier* bar,int iter){
 void *simul(void* args) {
   SimulArg* arg = (SimulArg *)args;
   int i,j;
-  int atual,prox;//for keep changing matrix
   int iter;
 
-  //building an alternating matrix
-  DoubleMatrix2D *matrix_iter[2];
-  matrix_iter[0]=arg->matrix;
-  matrix_iter[1]=arg->matrix_aux;
-
   for(iter = 0;iter < arg->max_iter;iter++) {
-    //change matrix for calculation
-    atual = iter % 2;
-    prox = 1 - iter % 2;
-    
+
     /* Calcular Pontos Internos */
     for (i = arg->tam_fatia * arg->id; i < arg->tam_fatia * (arg->id + 1); i++) {
       for (j = 0; j < arg->N; j++) {
-        double val = (dm2dGetEntry(matrix_iter[atual], i, j+1) +
-                      dm2dGetEntry(matrix_iter[atual], i+2, j+1) +
-                      dm2dGetEntry(matrix_iter[atual], i+1, j) +
-                      dm2dGetEntry(matrix_iter[atual], i+1, j+2))/4;
+        double val = (dm2dGetEntry(matrix, i, j+1) +
+                      dm2dGetEntry(matrix, i+2, j+1) +
+                      dm2dGetEntry(matrix, i+1, j) +
+                      dm2dGetEntry(matrix, i+1, j+2))/4;
         
         //verificamos se ainda existe algum calculo acima do maxD
         //nao usamos mutexes pk a verificacao so e feita apos de se esperar q todos
         //o q implica q a alteracao e feita concorrentemente para o mesmo valor
         // e a verificacao so e verificada apos todas terem alterado
-        if(fabs(dm2dGetEntry(matrix_iter[prox], i+1, j+1) - val) >= arg->maxD){
+        if(fabs(dm2dGetEntry(matrix_aux, i+1, j+1) - val) >= arg->maxD){
           is_finished = 0;
         }
-        dm2dSetEntry(matrix_iter[prox], i+1, j+1, val);
+        dm2dSetEntry(matrix_aux, i+1, j+1, val);
         }
     }
 
@@ -258,7 +254,7 @@ int main (int argc, char** argv) {
 
   if(argc != 11) {
     fprintf(stderr, "\nNumero invalido de argumentos.\n");
-    fprintf(stderr, "Uso: heatSim N tEsq tSup tDir tInf max_iter tarefas maxD\n\n");
+    fprintf(stderr, "Uso: heatSim N tEsq tSup tDir tInf max_iter tarefas maxD fichS periodoS\n\n");
     return 1;
   }
 
@@ -281,16 +277,12 @@ int main (int argc, char** argv) {
 
   if(N < 1 || tEsq < 0 || tSup < 0 || tDir < 0 || tInf < 0 || max_iter < 1 || tar < 1 || maxD<0 || periodoS<0) {
     fprintf(stderr, "\nErro: Argumentos invalidos.\n"
-	" Lembrar que N >= 1, temperaturas >= 0, max_iter >= 1, tarefas >= 1 e maxD >= 0\n\n");
+	" Lembrar que N >= 1, temperaturas >= 0, max_iter >= 1, tarefas >= 1, maxD >= 0,fichS a String, periodoS >= 0\n\n");
     return 1;
   }  
   ///////////////////////
   //Ur barrier for simul
   Barrier* bar = new_barrier(tar);
-
-
-  //DoubleMatrix also does malloc
-  DoubleMatrix2D *matrix, *matrix_aux;
 
   // Load matrix from file if exists
   FILE *f = fopen(file_name,"r");
@@ -341,8 +333,6 @@ int main (int argc, char** argv) {
 
   /* Criar Trabalhadoras */
   for (i = 0; i < tar; i++) {
-    simul_args[i].matrix=matrix;
-    simul_args[i].matrix_aux = matrix_aux;
     simul_args[i].id = i;
     simul_args[i].N = N;
     simul_args[i].maxD=maxD;
@@ -368,10 +358,7 @@ int main (int argc, char** argv) {
   }
 
   /* Imprimir resultado */
-  if(last_iter%2)
-    dm2dPrint(matrix);
-  else
-    dm2dPrint(matrix_aux);
+  dm2dPrint(matrix);
 
   /* Libertar Memória */
   destroy_barrier(bar);
