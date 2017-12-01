@@ -44,33 +44,32 @@ char* aux_file_name;
 int periodoS;
 DoubleMatrix2D *matrix, *matrix_aux;
 pid_t pid;//child pid
+int flag_interupt_exit = 0;//para parar imediatamente o processamento
 
 /*--------------------------------------------------------------------
 | Function: interrupt_handler
 / Function that handles signals for terminating the program (specially SIGINT)
+/ a funcao so e iniciada apos o pai ter saido da funcao auto_save_handler
 ---------------------------------------------------------------------*/
 void interrupt_handler(){
   puts("Vou terminar\n");
-  //isolar alarms
-  sigset_t mask;
-  sigemptyset(&mask);//init mask
-  if(sigprocmask(SIG_BLOCK,&mask,NULL)){
-    perror("Error ao bloquear sinal Alarm");
-    exit(1);
-  }
   //Set Flag para terminar processamento da matrix
-  
+  flag_interupt_exit=1;
 
-  //wait for last autosave to exit
+  // wait for last autosave to exit
   int status;
   if (waitpid(pid,&status,0)==-1)//waiting for it to finish
-    fprintf(stderr, "\nAlgo correu mal no wait\n");
+    fprintf(stderr, "\nAlgo correu mal no wait do interrupt\n");
   if(!(WIFEXITED(status)&&WEXITSTATUS(status)==EXIT_SUCCESS)){
     fprintf(stderr, "\nErro a gravar\n");
     exit(EXIT_FAILURE);
   }
 
-
+  if(rename(aux_file_name,file_name)!=0){
+    perror("Erro a renomear\n");
+    exit(1);
+  }
+  exit(EXIT_SUCCESS);
 }
 
 
@@ -82,12 +81,12 @@ void interrupt_handler(){
 void auto_save_handler(){
   alarm(periodoS);//set next auto save
   static int hi=0;
-  printf("auto save%d\n",hi++);
+  printf("auto save%d pid%d tid\n",hi++,getpid());
   if(pid!=0){
     //it means that another process was already created
     int status;
     if (waitpid(pid,&status,0)==-1)//waiting for it to finish
-      fprintf(stderr, "\nAlgo correu mal no wait\n");
+      fprintf(stderr, "\nAlgo correu mal no wait do autosave\n");
     if(!(WIFEXITED(status)&&WEXITSTATUS(status)==EXIT_SUCCESS)){
       fprintf(stderr, "\nErro a gravar\n");
       exit(EXIT_FAILURE);
@@ -105,15 +104,15 @@ void auto_save_handler(){
       fprintf(stderr, "\nErro abrir ficheiro para escrita\n");
       exit(EXIT_FAILURE);
     }
-    sleep(1);
     saveMatrix2dToFile(f,matrix);
     fclose(f);
     exit(EXIT_SUCCESS);
   }
   /*se for o pai sai da funcao e continua
-  nao precisamos de fazer mask pk se ainda estivermos na funcao o signal
-  e descartado, (nao existe problema pk para o pai(o q recebe o signal), ficar
-  na funcao e pk ja temos um save pendente)*/
+  nao precisamos de fazer mask nomeadamente para o filho pk se ainda estivermos 
+  na funcao o signal e descartado(ou a espera para SIGINT),
+  (nao existe problema pk para o pai ficar na funcao e pk ja temos um save pendente,
+  nem para o filho pk nunca sai da funcao)*/
 }
 
 /*--------------------------------------------------------------------
@@ -191,7 +190,6 @@ void wait_barrier(Barrier* bar,int iter){
     }else{
       is_finished=1;
     }
-    sleep(1);
     if(pthread_cond_broadcast(&bar->cond) != 0) {
       fprintf(stderr, "\nErro ao desbloquear variável de condição\n");
       exit(EXIT_FAILURE);
@@ -227,8 +225,21 @@ void *simul(void* args) {
   SimulArg* arg = (SimulArg *)args;
   int i,j;
   int iter;
+  //bloquear sinais nas threads pk as threads partilham
+  //os quadros de sinais
+  sigset_t mask;
+  if(sigemptyset(&mask)!=0){//init mask
+    perror("error init mask\n");
+    exit(1);
+  }
+  sigaddset(&mask,SIGALRM);
+  sigaddset(&mask,SIGINT);
+  if(sigprocmask(SIG_BLOCK,&mask,NULL)<0){
+    perror("Error ao bloquear sinal Alarm e SIGING");
+    exit(1);
+  }
 
-  for(iter = 0;iter < arg->max_iter;iter++) {
+  for(iter = 0;iter < arg->max_iter && !flag_exit_thread &&!flag_interupt_exit;iter++) {
 
     /* Calcular Pontos Internos */
     for (i = arg->tam_fatia * arg->id; i < arg->tam_fatia * (arg->id + 1); i++) {
@@ -250,9 +261,6 @@ void *simul(void* args) {
     }
 
     wait_barrier(arg->bar,iter);
-    //if is over  
-    if (flag_exit_thread)
-      break;//get of the calculation
 
   }
   return NULL;
@@ -364,23 +372,6 @@ int main (int argc, char** argv) {
   //copy both
   dm2dCopy (matrix_aux, matrix);
 
-
-  //Fazer overwrite dos signals
-  struct sigaction act;
-  //set our function for autosave
-  act.sa_handler = &auto_save_handler;
-  if(sigaction(SIGALRM,&act,NULL)){
-    perror("sigaction Alarm");
-    exit(1);
-  }
-
-  //we execute once control c, the program only handles once
-  if(signal(SIGINT,interrupt_handler)){
-    perror("Setting control c");
-    exit(1);
-  }
-
-
   int i;
   int res;//used for error handle
 
@@ -408,7 +399,36 @@ int main (int argc, char** argv) {
       return -1;
     }
   }
+  //Fazer overwrite dos signals
+  //Apenas a main thread pode receber sinais
+  struct sigaction alarm_sa, controlc_sa;
+  sigset_t controlc_mask;
+  //setup mask to block alarm and control c signal during handler
+  if(sigemptyset(&controlc_mask)!=0){
+    perror("error init mask\n");
+    exit(1);
+  }
+  sigaddset(&controlc_mask,SIGALRM);//add alarm signal
+  sigaddset(&controlc_mask,SIGINT);//add also crtl-c signal
 
+  //set our function for autosave
+  alarm_sa.sa_handler = &auto_save_handler;
+  //podemos usar a mascara no alarm pk o control c sera posto em espera
+  //para ser tratado apos saida
+  alarm_sa.sa_mask = controlc_mask;
+  //alarm signal is automatically block in handler
+  if(sigaction(SIGALRM,&alarm_sa,NULL)){
+    perror("sigaction Alarm");
+    exit(1);
+  }
+  //set control c handler
+  controlc_sa.sa_handler = &interrupt_handler;
+  controlc_sa.sa_mask = controlc_mask;//set the mask for block
+  controlc_sa.sa_flags=0;
+  if(sigaction(SIGINT,&controlc_sa,NULL)){
+    perror("Setting control c");
+    exit(1);
+  }
   //comecar auto save
   alarm(periodoS);
 
@@ -421,12 +441,11 @@ int main (int argc, char** argv) {
       return -1;
     }  
   }
-
   /* Imprimir resultado */
   dm2dPrint(matrix);
 
-  /* Remover ficheiro de calculo */
-  if(periodoS!=0&&unlink(file_name)!=0){
+  /* Remover ficheiro de calculo,verifica o ficheiro existe e se sim apaga */
+  if(access( aux_file_name, F_OK ) != -1&&unlink(aux_file_name)!=0){
     fprintf(stderr, "\nErro apagar ficheiro.\n"); 
   }
   /* Libertar Memória */
