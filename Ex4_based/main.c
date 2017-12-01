@@ -2,7 +2,7 @@
 // 3 Projeto SO 
 // Sistemas Operativos, DEI/IST/ULisboa 2017-18
 */
-
+//TODO fazer estado
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,6 +42,7 @@ static int flag_exit_thread=0;//alterado para exercicio
 char* file_name;
 int periodoS;
 DoubleMatrix2D *matrix, *matrix_aux;
+pid_t pid;//child pid
 
 /*--------------------------------------------------------------------
 | Function: auto_save_handler
@@ -138,17 +139,23 @@ void wait_barrier(Barrier* bar,int iter){
     
     //Auto save
     if(periodoS!=0 && iter % periodoS==0){
-      pid_t pid = fork();
+        if(pid!=0){
+          //it means that another process was already created
+          int status;
+          if (waitpid(pid,&status,0)==-1)//waiting for it to finish
+            fprintf(stderr, "\nAlgo correu mal no wait\n");
+          if(!(WIFEXITED(status)&&WEXITSTATUS(status)==EXIT_SUCCESS)){
+            fprintf(stderr, "\nErro a gravar\n");
+            exit(EXIT_FAILURE);
+          }
+        }
+      pid = fork();
       if(pid==-1){
         fprintf(stderr, "\nErro ao criar um processo\n");
         exit(EXIT_FAILURE);
       }else if (pid == 0){
         // child process
         auto_save_handler();
-      }else{
-        // parent process
-        //we wait for child to finish saving
-        wait(NULL);
       }
     }
 
@@ -345,6 +352,9 @@ int main (int argc, char** argv) {
       return -1;
     }
   }
+
+  //Fazer overwrite do signal
+  signal(SIGINT,);
 
   /* Esperar que as Trabalhadoras Terminem */
   for (i = 0; i < tar; i++) {
