@@ -416,6 +416,7 @@ int main (int argc, char** argv) {
   //podemos usar a mascara no alarm pk o control c sera posto em espera
   //para ser tratado apos saida
   alarm_sa.sa_mask = controlc_mask;
+  alarm_sa.sa_flags=0;
   //alarm signal is automatically block in handler
   if(sigaction(SIGALRM,&alarm_sa,NULL)){
     perror("sigaction Alarm");
