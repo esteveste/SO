@@ -44,35 +44,7 @@ char* aux_file_name;
 int periodoS;
 DoubleMatrix2D *matrix, *matrix_aux;
 pid_t pid;//child pid
-int flag_interupt_exit = 0;//para parar imediatamente o processamento
-
-/*--------------------------------------------------------------------
-| Function: interrupt_handler
-/ Function that handles signals for terminating the program (specially SIGINT)
-/ a funcao so e iniciada apos o pai ter saido da funcao auto_save_handler
----------------------------------------------------------------------*/
-void interrupt_handler(){
-  puts("Vou terminar\n");
-  //Set Flag para terminar processamento da matrix
-  flag_interupt_exit=1;
-
-  // wait for last autosave to exit
-  int status;
-  if (waitpid(pid,&status,0)==-1)//waiting for it to finish
-    fprintf(stderr, "\nAlgo correu mal no wait do interrupt\n");
-  if(!(WIFEXITED(status)&&WEXITSTATUS(status)==EXIT_SUCCESS)){
-    fprintf(stderr, "\nErro a gravar\n");
-    exit(EXIT_FAILURE);
-  }
-
-  if(rename(aux_file_name,file_name)!=0){
-    perror("Erro a renomear\n");
-    exit(1);
-  }
-  exit(EXIT_SUCCESS);
-}
-
-
+int flag_interrupt_exit = 0;//para parar imediatamente o processamento
 
 /*--------------------------------------------------------------------
 | Function: auto_save_handler
@@ -106,6 +78,11 @@ void auto_save_handler(){
     }
     saveMatrix2dToFile(f,matrix);
     fclose(f);
+    //checks if file exists
+    if(access(aux_file_name, F_OK ) != -1&&rename(aux_file_name,file_name)!=0){
+      perror("Erro a renomear\n");
+      exit(1);
+    }
     exit(EXIT_SUCCESS);
   }
   /*se for o pai sai da funcao e continua
@@ -115,6 +92,28 @@ void auto_save_handler(){
   nem para o filho pk nunca sai da funcao)*/
 }
 
+/*--------------------------------------------------------------------
+| Function: interrupt_handler
+/ Function that handles signals for terminating the program (specially SIGINT)
+/ a funcao so e iniciada apos o pai ter saido da funcao auto_save_handler
+---------------------------------------------------------------------*/
+void interrupt_handler(){
+  puts("Vou terminar\n");
+  //Set Flag para terminar processamento da matrix
+  flag_interrupt_exit=1;
+
+  auto_save_handler();
+  // wait for last autosave to exit
+  int status;
+  if (waitpid(pid,&status,0)==-1)//waiting for it to finish
+    fprintf(stderr, "\nAlgo correu mal no wait do interrupt\n");
+  if(!(WIFEXITED(status)&&WEXITSTATUS(status)==EXIT_SUCCESS)){
+    fprintf(stderr, "\nErro a gravar\n");
+    exit(EXIT_FAILURE);
+  }
+  //terminamos mal o filho termine
+  exit(0);
+}
 /*--------------------------------------------------------------------
 | Function: init_barrier
 / initializes the barrier,to simplefy code also contains error handle
@@ -184,12 +183,13 @@ void wait_barrier(Barrier* bar,int iter){
     DoubleMatrix2D *temp = matrix;
     matrix = matrix_aux;
     matrix_aux = temp;
-    //finish matrix flag
-    if(is_finished){
+    //finish matrix flag,ou interrupted flag
+    if(is_finished||flag_interrupt_exit){
       flag_exit_thread = 1;
     }else{
       is_finished=1;
     }
+    puts("hjjjhhhhh\n");
     if(pthread_cond_broadcast(&bar->cond) != 0) {
       fprintf(stderr, "\nErro ao desbloquear variável de condição\n");
       exit(EXIT_FAILURE);
@@ -239,7 +239,7 @@ void *simul(void* args) {
     exit(1);
   }
 
-  for(iter = 0;iter < arg->max_iter && !flag_exit_thread &&!flag_interupt_exit;iter++) {
+  for(iter = 0;iter < arg->max_iter && !flag_exit_thread;iter++) {
 
     /* Calcular Pontos Internos */
     for (i = arg->tam_fatia * arg->id; i < arg->tam_fatia * (arg->id + 1); i++) {
@@ -402,20 +402,20 @@ int main (int argc, char** argv) {
   //Fazer overwrite dos signals
   //Apenas a main thread pode receber sinais
   struct sigaction alarm_sa, controlc_sa;
-  sigset_t controlc_mask;
+  sigset_t signal_mask;
   //setup mask to block alarm and control c signal during handler
-  if(sigemptyset(&controlc_mask)!=0){
+  if(sigemptyset(&signal_mask)!=0){
     perror("error init mask\n");
     exit(1);
   }
-  sigaddset(&controlc_mask,SIGALRM);//add alarm signal
-  sigaddset(&controlc_mask,SIGINT);//add also crtl-c signal
-
+  sigaddset(&signal_mask,SIGALRM);//add alarm signal
+  sigaddset(&signal_mask,SIGINT);//add also crtl-c signal
+  
   //set our function for autosave
   alarm_sa.sa_handler = &auto_save_handler;
   //podemos usar a mascara no alarm pk o control c sera posto em espera
   //para ser tratado apos saida
-  alarm_sa.sa_mask = controlc_mask;
+  alarm_sa.sa_mask = signal_mask;
   alarm_sa.sa_flags=0;
   //alarm signal is automatically block in handler
   if(sigaction(SIGALRM,&alarm_sa,NULL)){
@@ -424,7 +424,7 @@ int main (int argc, char** argv) {
   }
   //set control c handler
   controlc_sa.sa_handler = &interrupt_handler;
-  controlc_sa.sa_mask = controlc_mask;//set the mask for block
+  controlc_sa.sa_mask = signal_mask;//set the mask for block
   controlc_sa.sa_flags=0;
   if(sigaction(SIGINT,&controlc_sa,NULL)){
     perror("Setting control c");
@@ -446,7 +446,7 @@ int main (int argc, char** argv) {
   dm2dPrint(matrix);
 
   /* Remover ficheiro de calculo,verifica o ficheiro existe e se sim apaga */
-  if(access( aux_file_name, F_OK ) != -1&&unlink(aux_file_name)!=0){
+  if(access( file_name, F_OK ) != -1&&unlink(file_name)!=0){
     fprintf(stderr, "\nErro apagar ficheiro.\n"); 
   }
   /* Libertar Memória */
