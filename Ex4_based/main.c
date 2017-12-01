@@ -12,7 +12,7 @@
 #include "matrix2d.h"
 #include <math.h>
 
-
+#include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -40,25 +40,80 @@ typedef struct {
 static int is_finished =1;//1 when is over,(1 because only when we dont set is over)
 static int flag_exit_thread=0;//alterado para exercicio
 char* file_name;
+char* aux_file_name;
 int periodoS;
 DoubleMatrix2D *matrix, *matrix_aux;
 pid_t pid;//child pid
+
+/*--------------------------------------------------------------------
+| Function: interrupt_handler
+/ Function that handles signals for terminating the program (specially SIGINT)
+---------------------------------------------------------------------*/
+void interrupt_handler(){
+  puts("Vou terminar\n");
+  //isolar alarms
+  sigset_t mask;
+  sigemptyset(&mask);//init mask
+  if(sigprocmask(SIG_BLOCK,&mask,NULL)){
+    perror("Error ao bloquear sinal Alarm");
+    exit(1);
+  }
+  //Set Flag para terminar processamento da matrix
+  
+
+  //wait for last autosave to exit
+  int status;
+  if (waitpid(pid,&status,0)==-1)//waiting for it to finish
+    fprintf(stderr, "\nAlgo correu mal no wait\n");
+  if(!(WIFEXITED(status)&&WEXITSTATUS(status)==EXIT_SUCCESS)){
+    fprintf(stderr, "\nErro a gravar\n");
+    exit(EXIT_FAILURE);
+  }
+
+
+}
+
+
 
 /*--------------------------------------------------------------------
 | Function: auto_save_handler
 / Function that handles the new process created for auto saving the matrix
 ---------------------------------------------------------------------*/
 void auto_save_handler(){
-  FILE *f=fopen(file_name,"w");//write over the file
-  if (f==NULL)
-  {
-    fprintf(stderr, "\nErro abrir ficheiro para escrita\n");
-    exit(EXIT_FAILURE);
+  alarm(periodoS);//set next auto save
+  static int hi=0;
+  printf("auto save%d\n",hi++);
+  if(pid!=0){
+    //it means that another process was already created
+    int status;
+    if (waitpid(pid,&status,0)==-1)//waiting for it to finish
+      fprintf(stderr, "\nAlgo correu mal no wait\n");
+    if(!(WIFEXITED(status)&&WEXITSTATUS(status)==EXIT_SUCCESS)){
+      fprintf(stderr, "\nErro a gravar\n");
+      exit(EXIT_FAILURE);
+    }
   }
-
-  saveMatrix2dToFile(f,matrix);
-  fclose(f);
-  exit(EXIT_SUCCESS);
+  pid = fork();
+  if(pid==-1){
+    fprintf(stderr, "\nErro ao criar um processo\n");
+    exit(EXIT_FAILURE);
+  }else if (pid == 0){
+    // child process
+    FILE *f=fopen(aux_file_name,"w");//write over the file
+    if (f==NULL)
+    {
+      fprintf(stderr, "\nErro abrir ficheiro para escrita\n");
+      exit(EXIT_FAILURE);
+    }
+    sleep(1);
+    saveMatrix2dToFile(f,matrix);
+    fclose(f);
+    exit(EXIT_SUCCESS);
+  }
+  /*se for o pai sai da funcao e continua
+  nao precisamos de fazer mask pk se ainda estivermos na funcao o signal
+  e descartado, (nao existe problema pk para o pai(o q recebe o signal), ficar
+  na funcao e pk ja temos um save pendente)*/
 }
 
 /*--------------------------------------------------------------------
@@ -136,30 +191,7 @@ void wait_barrier(Barrier* bar,int iter){
     }else{
       is_finished=1;
     }
-    
-    //Auto save
-    if(periodoS!=0 && iter % periodoS==0){
-        if(pid!=0){
-          //it means that another process was already created
-          int status;
-          if (waitpid(pid,&status,0)==-1)//waiting for it to finish
-            fprintf(stderr, "\nAlgo correu mal no wait\n");
-          if(!(WIFEXITED(status)&&WEXITSTATUS(status)==EXIT_SUCCESS)){
-            fprintf(stderr, "\nErro a gravar\n");
-            exit(EXIT_FAILURE);
-          }
-        }
-      pid = fork();
-      if(pid==-1){
-        fprintf(stderr, "\nErro ao criar um processo\n");
-        exit(EXIT_FAILURE);
-      }else if (pid == 0){
-        // child process
-        auto_save_handler();
-      }
-    }
-
-
+    sleep(1);
     if(pthread_cond_broadcast(&bar->cond) != 0) {
       fprintf(stderr, "\nErro ao desbloquear variável de condição\n");
       exit(EXIT_FAILURE);
@@ -294,6 +326,13 @@ int main (int argc, char** argv) {
   //Ur barrier for simul
   Barrier* bar = new_barrier(tar);
 
+  //set the aux filename
+  aux_file_name = (char *) malloc(strlen(file_name)+2);//+2 -> null e ~
+  strcpy(aux_file_name,"~");
+  strcat(aux_file_name,file_name);
+  printf("%s\n\n",aux_file_name);
+
+
   // Load matrix from file if exists
   FILE *f = fopen(file_name,"r");
   if(f!=NULL){
@@ -325,6 +364,23 @@ int main (int argc, char** argv) {
   //copy both
   dm2dCopy (matrix_aux, matrix);
 
+
+  //Fazer overwrite dos signals
+  struct sigaction act;
+  //set our function for autosave
+  act.sa_handler = &auto_save_handler;
+  if(sigaction(SIGALRM,&act,NULL)){
+    perror("sigaction Alarm");
+    exit(1);
+  }
+
+  //we execute once control c, the program only handles once
+  if(signal(SIGINT,interrupt_handler)){
+    perror("Setting control c");
+    exit(1);
+  }
+
+
   int i;
   int res;//used for error handle
 
@@ -353,8 +409,8 @@ int main (int argc, char** argv) {
     }
   }
 
-  //Fazer overwrite do signal
-  signal(SIGINT,);
+  //comecar auto save
+  alarm(periodoS);
 
   /* Esperar que as Trabalhadoras Terminem */
   for (i = 0; i < tar; i++) {
@@ -370,7 +426,7 @@ int main (int argc, char** argv) {
   dm2dPrint(matrix);
 
   /* Remover ficheiro de calculo */
-  if(periodoS!=0&&remove(file_name)!=0){
+  if(periodoS!=0&&unlink(file_name)!=0){
     fprintf(stderr, "\nErro apagar ficheiro.\n"); 
   }
   /* Libertar Memória */
@@ -379,6 +435,7 @@ int main (int argc, char** argv) {
   dm2dFree(matrix_aux);
   free(simul_args);
   free(tid);
+  free(aux_file_name);
 
   return 0;
 }

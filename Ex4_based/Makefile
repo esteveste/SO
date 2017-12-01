@@ -19,5 +19,7 @@ zip:
 	zip Ex3.zip main.c matrix2d.c matrix2d.h Makefile
 
 run:
-	./heatSim 10 10 10 0 0 10 5 0.0001 ola 1
+	./heatSim 10 10 10 0 0 10 5 0 ola 1
+run2:
+	./heatSim 10 10 10 0 0 100 5 0 ola 2
 
