@@ -57,7 +57,10 @@ void auto_save_handler(){
   if(pid!=0){
     //it means that another process was already created
     int status;
-    if (waitpid(pid,&status,0)==-1)//waiting for it to finish
+    //waiting for it to finish, escolhi esta implementacao pois
+    //o "pedido de autosave" ja foi feito, logo em vez de esperar por um
+    //proximo sinal, executamos imediatamente a seguir a terminar o outro save
+    if (waitpid(pid,&status,0)==-1)
       fprintf(stderr, "\nAlgo correu mal no wait do autosave\n");
     if(!(WIFEXITED(status)&&WEXITSTATUS(status)==EXIT_SUCCESS)){
       fprintf(stderr, "\nErro a gravar\n");
@@ -98,7 +101,6 @@ void auto_save_handler(){
 / a funcao so e iniciada apos o pai ter saido da funcao auto_save_handler
 ---------------------------------------------------------------------*/
 void interrupt_handler(){
-  puts("Vou terminar\n");
   //Set Flag para terminar processamento da matrix
   flag_interrupt_exit=1;
 
@@ -189,7 +191,6 @@ void wait_barrier(Barrier* bar,int iter){
     }else{
       is_finished=1;
     }
-    puts("hjjjhhhhh\n");
     if(pthread_cond_broadcast(&bar->cond) != 0) {
       fprintf(stderr, "\nErro ao desbloquear variável de condição\n");
       exit(EXIT_FAILURE);
@@ -322,7 +323,7 @@ int main (int argc, char** argv) {
 
   /* Verificacao argumentos*/
   fprintf(stderr, "\nArgumentos:\n"
-	" N=%d tEsq=%.1f tSup=%.1f tDir=%.1f tInf=%.1f max_iter=%d tarefas=%d maxD=%.1f fichS=%s periodoS=%d\n",
+	" N=%d tEsq=%.1f tSup=%.1f tDir=%.1f tInf=%.1f max_iter=%d tarefas=%d maxD=%f fichS=%s periodoS=%d\n",
 	N, tEsq, tSup, tDir, tInf, max_iter,tar,maxD,file_name,periodoS);
 
   if(N < 1 || tEsq < 0 || tSup < 0 || tDir < 0 || tInf < 0 || max_iter < 1 || tar < 1 || maxD<0 || periodoS<0) {
@@ -339,7 +340,6 @@ int main (int argc, char** argv) {
   strcpy(aux_file_name,"~");
   strcat(aux_file_name,file_name);
   printf("%s\n\n",aux_file_name);
-
 
   // Load matrix from file if exists
   FILE *f = fopen(file_name,"r");
