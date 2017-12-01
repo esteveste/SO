@@ -16,7 +16,7 @@ clean:
 	rm -f *.o heatSim
 
 zip:
-	zip Ex3.zip main.c matrix2d.c matrix2d.h Makefile
+	zip Ex4.zip main.c matrix2d.c matrix2d.h Makefile
 
 run:
 	./heatSim 10 10 10 0 0 10 5 0 ola 1

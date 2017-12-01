@@ -1,8 +1,7 @@
 /*
-// 3 Projeto SO 
+// 4 Projeto SO 
 // Sistemas Operativos, DEI/IST/ULisboa 2017-18
 */
-//TODO fazer estado
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,8 +51,6 @@ int flag_interrupt_exit = 0;//para parar imediatamente o processamento
 ---------------------------------------------------------------------*/
 void auto_save_handler(){
   alarm(periodoS);//set next auto save
-  static int hi=0;
-  printf("auto save%d pid%d tid\n",hi++,getpid());
   if(pid!=0){
     //it means that another process was already created
     int status;
@@ -339,8 +336,7 @@ int main (int argc, char** argv) {
   aux_file_name = (char *) malloc(strlen(file_name)+2);//+2 -> null e ~
   strcpy(aux_file_name,"~");
   strcat(aux_file_name,file_name);
-  printf("%s\n\n",aux_file_name);
-
+  
   // Load matrix from file if exists
   FILE *f = fopen(file_name,"r");
   if(f!=NULL){
