@@ -44,24 +44,48 @@ int periodoS;
 DoubleMatrix2D *matrix, *matrix_aux;
 pid_t pid;//child pid
 int flag_interrupt_exit = 0;//para parar imediatamente o processamento
+int controlc_flag=0;
+int alarm_flag=0;
+
 
 /*--------------------------------------------------------------------
-| Function: auto_save_handler
+| Function: controlc_handler
+/ Function sets SIGINT flag
+---------------------------------------------------------------------*/
+void controlc_handler(){
+  controlc_flag=1;
+}
+
+
+/*--------------------------------------------------------------------
+| Function: alarm_handler
+/ Function sets alarm flag
+---------------------------------------------------------------------*/
+void alarm_handler(){
+  alarm(periodoS);//set next auto save
+  alarm_flag=1;
+}
+
+/*--------------------------------------------------------------------
+| Function: auto_save_function
 / Function that handles the new process created for auto saving the matrix
 ---------------------------------------------------------------------*/
-void auto_save_handler(){
-  alarm(periodoS);//set next auto save
+void auto_save_function(){
   if(pid!=0){
     //it means that another process was already created
     int status;
     //waiting for it to finish, escolhi esta implementacao pois
     //o "pedido de autosave" ja foi feito, logo em vez de esperar por um
     //proximo sinal, executamos imediatamente a seguir a terminar o outro save
-    if (waitpid(pid,&status,0)==-1)
+    int wait_status = waitpid(-1,&status,WNOHANG);
+    if (wait_status==-1){
       fprintf(stderr, "\nAlgo correu mal no wait do autosave\n");
+    }else if(wait_status==0){
+      //o filho nao retornou, continuamos a espera
+      return;
+    }
     if(!(WIFEXITED(status)&&WEXITSTATUS(status)==EXIT_SUCCESS)){
       fprintf(stderr, "\nErro a gravar\n");
-      exit(EXIT_FAILURE);
     }
   }
   pid = fork();
@@ -85,33 +109,26 @@ void auto_save_handler(){
     }
     exit(EXIT_SUCCESS);
   }
-  /*se for o pai sai da funcao e continua
-  nao precisamos de fazer mask nomeadamente para o filho pk se ainda estivermos 
-  na funcao o signal e descartado(ou a espera para SIGINT),
-  (nao existe problema pk para o pai ficar na funcao e pk ja temos um save pendente,
-  nem para o filho pk nunca sai da funcao)*/
 }
 
 /*--------------------------------------------------------------------
-| Function: interrupt_handler
-/ Function that handles signals for terminating the program (specially SIGINT)
-/ a funcao so e iniciada apos o pai ter saido da funcao auto_save_handler
+| Function: controlc_function
+/ Function for terminating the program (specially SIGINT)
+/ a funcao so e iniciada apos o pai ter saido da funcao auto_save_function
 ---------------------------------------------------------------------*/
-void interrupt_handler(){
+void controlc_function(){
   //Set Flag para terminar processamento da matrix
   flag_interrupt_exit=1;
 
-  auto_save_handler();
+  auto_save_function();
   // wait for last autosave to exit
   int status;
-  if (waitpid(pid,&status,0)==-1)//waiting for it to finish
+  if (wait(&status)==-1)//waiting for it to finish
     fprintf(stderr, "\nAlgo correu mal no wait do interrupt\n");
   if(!(WIFEXITED(status)&&WEXITSTATUS(status)==EXIT_SUCCESS)){
     fprintf(stderr, "\nErro a gravar\n");
-    exit(EXIT_FAILURE);
   }
   //terminamos mal o filho termine
-  alarm(0);//fazer reset ao alarm
   //vamos para a main fazer os frees
 }
 /*--------------------------------------------------------------------
@@ -189,6 +206,16 @@ void wait_barrier(Barrier* bar,int iter){
     }else{
       is_finished=1;
     }
+
+    if(controlc_flag){
+      controlc_function();
+      flag_exit_thread = 1;
+      //quando for feita esta funcao vamos sair do programa
+    }else if(alarm_flag){
+      auto_save_function();
+      alarm_flag=0;//reset flag
+    }
+
     if(pthread_cond_broadcast(&bar->cond) != 0) {
       fprintf(stderr, "\nErro ao desbloquear variável de condição\n");
       exit(EXIT_FAILURE);
@@ -409,7 +436,7 @@ int main (int argc, char** argv) {
   sigaddset(&signal_mask,SIGINT);//add also crtl-c signal
   
   //set our function for autosave
-  alarm_sa.sa_handler = &auto_save_handler;
+  alarm_sa.sa_handler = &alarm_handler;
   //podemos usar a mascara no alarm pk o control c sera posto em espera
   //para ser tratado apos saida
   alarm_sa.sa_mask = signal_mask;
@@ -420,7 +447,7 @@ int main (int argc, char** argv) {
     exit(1);
   }
   //set control c handler
-  controlc_sa.sa_handler = &interrupt_handler;
+  controlc_sa.sa_handler = &controlc_handler;
   controlc_sa.sa_mask = signal_mask;//set the mask for block
   controlc_sa.sa_flags=0;
   if(sigaction(SIGINT,&controlc_sa,NULL)){
