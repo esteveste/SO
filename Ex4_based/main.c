@@ -36,8 +36,8 @@ typedef struct {
 ---------------------------------------------------------------------*/
 //ambas podiam estar em estrutura para evitar variaveis globais mas so
 //complicava o codigo, (static para limited scope, so para este ficheiro)
-static int is_finished =1;//1 when is over,(1 because only when we dont set is over)
-static int flag_exit_thread=0;//alterado para exercicio
+int is_finished =1;//1 when is over,(1 because only when we dont set is over)
+int flag_exit_thread=0;//alterado para exercicio
 char* file_name;
 char* aux_file_name;
 int periodoS;
@@ -111,7 +111,8 @@ void interrupt_handler(){
     exit(EXIT_FAILURE);
   }
   //terminamos mal o filho termine
-  exit(0);
+  alarm(0);//fazer reset ao alarm
+  //vamos para a main fazer os frees
 }
 /*--------------------------------------------------------------------
 | Function: init_barrier
@@ -232,7 +233,7 @@ void *simul(void* args) {
   }
   sigaddset(&mask,SIGALRM);
   sigaddset(&mask,SIGINT);
-  if(sigprocmask(SIG_BLOCK,&mask,NULL)<0){
+  if(pthread_sigmask(SIG_BLOCK,&mask,NULL)<0){
     perror("Error ao bloquear sinal Alarm e SIGING");
     exit(1);
   }
@@ -439,10 +440,13 @@ int main (int argc, char** argv) {
     }  
   }
   /* Imprimir resultado */
+  if(!flag_interrupt_exit)
   dm2dPrint(matrix);
 
-  /* Remover ficheiro de calculo,verifica o ficheiro existe e se sim apaga */
-  if(access( file_name, F_OK ) != -1&&unlink(file_name)!=0){
+  /* Remover ficheiro de calculo,verifica o ficheiro existe e se sim apaga
+  tb verifica se nao estamos a sair de um control c */
+
+  if(!flag_interrupt_exit&&access( file_name, F_OK ) != -1&&unlink(file_name)!=0){
     fprintf(stderr, "\nErro apagar ficheiro.\n"); 
   }
   /* Libertar Memória */
